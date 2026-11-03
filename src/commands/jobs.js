@@ -1,101 +1,111 @@
-const {
-    SlashCommandBuilder,
-    EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle
-} = require("discord.js");
-const { addJob } = require("../sheets/jobs");
-const { getWallet, setWallet } = require("../sheets/wallets");
-const { getConfig } = require("../sheets/config");
+const { SlashCommandBuilder } = require("discord.js");
+const jobs = require("../services/jobs");
+const config = require("../services/config");
+const { toCents, fmt, UserError } = require("../utils/money");
+const { requireSupport } = require("../utils/perms");
+const { jobEmbed, jobClaimRow } = require("../utils/embeds");
+const { applySpendRole } = require("../utils/roles");
 
-function generateJobId() {
-    return "J" + Math.floor(Math.random() * 1000000);
-}
+const idOpt = o => o.setName("id").setDescription("Job number").setMinValue(1).setRequired(true);
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("job")
         .setDescription("Manage jobs")
-        .addSubcommand(sub =>
-            sub.setName("create")
-                .setDescription("Create a new job")
-                .addUserOption(opt =>
-                    opt.setName("customer")
-                        .setDescription("Customer for the job")
-                        .setRequired(true)
-                )
-                .addIntegerOption(opt =>
-                    opt.setName("value")
-                        .setDescription("Total job value in gp")
-                        .setRequired(true)
-                )
-                .addIntegerOption(opt =>
-                    opt.setName("deposit")
-                        .setDescription("Deposit required for booster")
-                        .setRequired(true)
-                )
-                .addStringOption(opt =>
-                    opt.setName("description")
-                        .setDescription("Job description")
-                        .setRequired(true)
-                )
-                .addStringOption(opt =>
-                    opt.setName("image")
-                        .setDescription("Optional image URL")
-                        .setRequired(false)
-                )
-        ),
+        .addSubcommand(s => s.setName("create").setDescription("Create a job and escrow the customer's funds (staff)")
+            .addUserOption(o => o.setName("customer").setDescription("Customer").setRequired(true))
+            .addNumberOption(o => o.setName("price").setDescription("Total price in USD").setMinValue(0.01).setMaxValue(1000000).setRequired(true))
+            .addStringOption(o => o.setName("description").setDescription("What needs doing").setMaxLength(1000).setRequired(true))
+            .addNumberOption(o => o.setName("deposit").setDescription("Deposit the worker must hold, in USD").setMinValue(0).setMaxValue(1000000))
+            .addStringOption(o => o.setName("image").setDescription("Optional image URL")))
+        .addSubcommand(s => s.setName("complete").setDescription("Mark a claimed job complete and pay the worker (staff)").addIntegerOption(idOpt))
+        .addSubcommand(s => s.setName("cancel").setDescription("Cancel a job and refund the customer (staff)").addIntegerOption(idOpt))
+        .addSubcommand(s => s.setName("info").setDescription("Show a job").addIntegerOption(idOpt))
+        .addSubcommand(s => s.setName("list").setDescription("List recent jobs")
+            .addStringOption(o => o.setName("status").setDescription("Filter by status").addChoices(
+                { name: "open", value: "open" }, { name: "claimed", value: "claimed" },
+                { name: "completed", value: "completed" }, { name: "cancelled", value: "cancelled" }))),
+
     async execute(interaction) {
-        try {
-            if (interaction.options.getSubcommand() !== "create") return;
+        const sub = interaction.options.getSubcommand();
 
-            console.log("➡️ /job create triggered");
-
+        if (sub === "create") {
+            requireSupport(interaction.member);
             const customer = interaction.options.getUser("customer");
-            const value = interaction.options.getInteger("value");
-            const deposit = interaction.options.getInteger("deposit");
-            const description = interaction.options.getString("description");
-            const image = interaction.options.getString("image") || null;
+            const image = interaction.options.getString("image");
+            if (image && !/^https?:\/\//i.test(image)) throw new UserError("Image must be a http(s) URL.");
 
-            console.log("➡️ Options:", { customer: customer.id, value, deposit, description, image });
-
-            // 🔎 Wallet check
-            const wallet = await getWallet(customer.id);
-            console.log("➡️ Wallet:", wallet);
-
-            if (wallet.balance < value) {
-                console.log("❌ Insufficient balance");
-                return interaction.reply({ content: "❌ Customer has insufficient balance.", ephemeral: true });
-            }
-
-            await setWallet(customer.id, wallet.balance - value, wallet.spent, interaction.guild);
-            console.log("➡️ Wallet updated");
-
-            // 🔎 Add job to sheet
-            const jobId = generateJobId();
-            console.log("➡️ Adding job to sheet with ID:", jobId);
-
-            await addJob({
-                id: jobId,
+            const { job, spent } = await jobs.createJob({
                 customerId: customer.id,
-                boosterId: "",
-                value,
-                description,
-                status: "Open",
-                image,
-                deposit
+                priceCents: toCents(interaction.options.getNumber("price")),
+                depositCents: toCents(interaction.options.getNumber("deposit") || 0),
+                description: interaction.options.getString("description"),
+                imageUrl: image,
+                channelId: interaction.channelId,
+                createdBy: interaction.user.id
             });
 
-            console.log("✅ Job added to sheet");
+            let posted = true;
+            try {
+                const boardId = await config.get("job_board_channel_id");
+                const channel = boardId ? await interaction.client.channels.fetch(boardId) : interaction.channel;
+                const msg = await channel.send({ embeds: [jobEmbed(job)], components: [jobClaimRow(job.id)] });
+                await jobs.setBoardMessage(job.id, channel.id, msg.id);
+            } catch (e) {
+                console.error("[jobs] failed to post job board message:", e.message);
+                posted = false;
+            }
+            await applySpendRole(interaction.guild, customer.id, spent);
 
-            return interaction.reply({ content: `✅ Created job ${jobId}`, ephemeral: true });
-        } catch (err) {
-            console.error("❌ Error in /job create full trace:", err);
             return interaction.reply({
-                content: "❌ There was an error creating the job.",
+                content: `✅ Created job **#${job.id}** (${fmt(job.price_cents)} escrowed from ${customer.username}).` +
+                    (posted ? "" : "\n⚠️ Couldn't post it to the job board — check the bot's channel permissions."),
                 ephemeral: true
             });
         }
+
+        const id = interaction.options.getInteger("id");
+
+        if (sub === "complete") {
+            requireSupport(interaction.member);
+            const job = await jobs.completeJob({ jobId: id, actorId: interaction.user.id });
+            await refreshBoard(interaction.client, job);
+            return interaction.reply({
+                content: `✅ Job #${id} completed. <@${job.worker_id}> earned ${fmt(job.worker_cents)}; house profit ${fmt(job.house_cents)}.`,
+                ephemeral: true
+            });
+        }
+
+        if (sub === "cancel") {
+            requireSupport(interaction.member);
+            const job = await jobs.cancelJob({ jobId: id, actorId: interaction.user.id });
+            await refreshBoard(interaction.client, job);
+            return interaction.reply({ content: `✅ Job #${id} cancelled and ${fmt(job.price_cents)} refunded to <@${job.customer_id}>.`, ephemeral: true });
+        }
+
+        if (sub === "info") {
+            const job = await jobs.getJob(id);
+            if (!job) throw new UserError(`Job #${id} doesn't exist.`);
+            return interaction.reply({ embeds: [jobEmbed(job)], ephemeral: true });
+        }
+
+        if (sub === "list") {
+            const rows = await jobs.listJobs({ status: interaction.options.getString("status") });
+            const text = rows.length
+                ? rows.map(j => `**#${j.id}** ${j.status} — ${fmt(j.price_cents)} — <@${j.customer_id}>${j.worker_id ? ` → <@${j.worker_id}>` : ""}`).join("\n")
+                : "No jobs found.";
+            return interaction.reply({ content: text, ephemeral: true });
+        }
     }
 };
+
+/** Update the job-board message after a status change. Best effort. */
+async function refreshBoard(client, job) {
+    if (!job.board_channel_id || !job.board_message_id) return;
+    try {
+        const ch = await client.channels.fetch(job.board_channel_id);
+        const msg = await ch.messages.fetch(job.board_message_id);
+        await msg.edit({ embeds: [jobEmbed(job)], components: [] });
+    } catch (e) { /* message may have been deleted */ }
+}
+module.exports.refreshBoard = refreshBoard;

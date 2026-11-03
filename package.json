@@ -5,7 +5,10 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "migrate": "node src/db/migrate.js",
+    "import-wallets": "node scripts/import-wallets.js",
+    "test": "node test/run.mjs"
   },
   "keywords": [],
   "author": "",
@@ -14,9 +17,11 @@
     "@googleapis/sheets": "^12.0.0",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.2",
-    "googleapis": "^160.0.0"
+    "googleapis": "^160.0.0",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
+    "embedded-postgres": "^18.6.0-beta.19",
     "nodemon": "^3.1.10"
   }
 }

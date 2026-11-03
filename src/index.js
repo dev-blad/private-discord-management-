@@ -11,7 +11,12 @@ const commands = [];
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".js"));
 
+// Old Google-Sheets commands. Still on Sheets until they're ported to Postgres.
+const LEGACY = new Set(["accounts.js", "boosters.js", "gold.js"]);
+const legacyOn = process.env.ENABLE_LEGACY_SHEETS === "true";
+
 for (const file of commandFiles) {
+    if (LEGACY.has(file) && !legacyOn) continue;
     const command = require(path.join(commandsPath, file));
     client.commands.set(command.data.name, command);
     commands.push(command.data.toJSON());
@@ -20,7 +25,8 @@ for (const file of commandFiles) {
 // Register commands with Discord API
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
-(async () => {
+async function start() {
+    await require("./db/migrate").migrate();
     try {
         console.log("🔄 Refreshing slash commands...");
         await rest.put(
@@ -34,7 +40,7 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
     } catch (error) {
         console.error(error);
     }
-})();
+}
 
 // Load events
 const eventsPath = path.join(__dirname, "events");
@@ -49,4 +55,6 @@ for (const file of eventFiles) {
     }
 }
 
-client.login(process.env.DISCORD_TOKEN);
+start()
+    .then(() => client.login(process.env.DISCORD_TOKEN))
+    .catch(err => { console.error("Startup failed:", err); process.exit(1); });

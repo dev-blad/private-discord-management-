@@ -1,64 +1,35 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { getConfig, setConfig } = require("../sheets/config");
+const config = require("../services/config");
+const { requireAdmin } = require("../utils/perms");
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("config")
-        .setDescription("View or update bot configuration")
-        .addSubcommand(sub =>
-            sub.setName("get")
-                .setDescription("Get a config value")
-                .addStringOption(opt =>
-                    opt.setName("key").setDescription("Config key").setRequired(true)
-                )
-        )
-        .addSubcommand(sub =>
-            sub.setName("set")
-                .setDescription("Set a config value")
-                .addStringOption(opt =>
-                    opt.setName("key").setDescription("Config key").setRequired(true)
-                )
-                .addStringOption(opt =>
-                    opt.setName("value").setDescription("Config value").setRequired(true)
-                )
-        )
-        .addSubcommand(sub =>
-            sub.setName("list")
-                .setDescription("List all config values")
-        ),
+        .setDescription("View or update bot configuration (admin)")
+        .addSubcommand(s => s.setName("get").setDescription("Get a value")
+            .addStringOption(o => o.setName("key").setDescription("Config key").setRequired(true)))
+        .addSubcommand(s => s.setName("set").setDescription("Set a value")
+            .addStringOption(o => o.setName("key").setDescription("Config key").setRequired(true).setMaxLength(100))
+            .addStringOption(o => o.setName("value").setDescription("Value").setRequired(true).setMaxLength(500)))
+        .addSubcommand(s => s.setName("list").setDescription("List all values")),
+
     async execute(interaction) {
+        requireAdmin(interaction.member);
         const sub = interaction.options.getSubcommand();
 
         if (sub === "get") {
             const key = interaction.options.getString("key");
-            const config = await getConfig();
-            const value = config[key];
-            return interaction.reply({
-                content: value ? `⚙️ **${key}** = ${value}` : `❌ Key "${key}" not found.`,
-                ephemeral: true
-            });
+            const v = await config.get(key);
+            return interaction.reply({ content: v !== null ? `⚙️ **${key}** = ${v}` : `❌ Key "${key}" not found.`, ephemeral: true });
         }
-
         if (sub === "set") {
             const key = interaction.options.getString("key");
             const value = interaction.options.getString("value");
-            await setConfig(key, value);
-            return interaction.reply({
-                content: `✅ Set **${key}** = ${value}`,
-                ephemeral: true
-            });
+            await config.set(key, value);
+            return interaction.reply({ content: `✅ Set **${key}** = ${value}`, ephemeral: true });
         }
-
-        if (sub === "list") {
-            const config = await getConfig();
-            const list = Object.entries(config)
-                .map(([k, v]) => `• **${k}** = ${v}`)
-                .join("\n");
-
-            return interaction.reply({
-                content: list.length ? `⚙️ **Config Values:**\n${list}` : "⚠️ No config found.",
-                ephemeral: true
-            });
-        }
+        const all = await config.getAll();
+        const list = Object.entries(all).map(([k, v]) => `• **${k}** = ${v}`).join("\n");
+        return interaction.reply({ content: list ? `⚙️ **Config**\n${list}` : "No config set.", ephemeral: true });
     }
 };
