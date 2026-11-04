@@ -24,12 +24,8 @@ const commands = [];
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".js"));
 
-// Old Google-Sheets commands. Still on Sheets until they're ported to Postgres.
-const LEGACY = new Set(["accounts.js", "boosters.js", "gold.js"]);
-const legacyOn = process.env.ENABLE_LEGACY_SHEETS === "true";
 
 for (const file of commandFiles) {
-    if (LEGACY.has(file) && !legacyOn) continue;
     const command = require(path.join(commandsPath, file));
     client.commands.set(command.data.name, command);
     commands.push(command.data.toJSON());

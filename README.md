@@ -26,7 +26,7 @@ Postgres is the source of truth; every money movement is an immutable ledger row
 | `/report export <table>` | admin | CSV of wallets, ledger, jobs, payouts |
 | `/config get|set|list` | admin | runtime settings |
 
-`/accounts`, `/booster`, `/gold` still use Google Sheets and are off unless `ENABLE_LEGACY_SHEETS=true`.
+Account sales use `/create_listing`, `/send_account` and friends (stored in Postgres, no Sheets).
 
 ## Setup
 1. `npm install`
