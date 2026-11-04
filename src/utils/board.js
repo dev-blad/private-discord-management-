@@ -1,6 +1,6 @@
 const config = require("../services/config");
 const jobs = require("../services/jobs");
-const { jobEmbed, jobClaimRow } = require("./embeds");
+const { jobMessage } = require("./embeds");
 
 // Where each stage of a job lives. Set with /setchannels. Unset stages stay where they are.
 const KEYS = {
@@ -19,13 +19,12 @@ async function channelIdFor(status) {
     return process.env[ENV[status]] || null;
 }
 
-const payload = job => ({ embeds: [jobEmbed(job)], components: job.status === "open" ? [jobClaimRow(job.id)] : [] });
 
 /** Post a brand-new job to the claim channel (or fallbackChannel if none is set). */
 async function postNewJob(client, job, fallbackChannel) {
     const id = await channelIdFor("open");
     const channel = id ? await client.channels.fetch(id) : fallbackChannel;
-    const msg = await channel.send(payload(job));
+    const msg = await channel.send(await jobMessage(client, job, channel.guild));
     await jobs.setBoardMessage(job.id, channel.id, msg.id);
 }
 
@@ -43,11 +42,11 @@ async function moveBoard(client, job) {
             if (!job.board_channel_id || !job.board_message_id) return;
             const ch = await client.channels.fetch(job.board_channel_id);
             const msg = await ch.messages.fetch(job.board_message_id);
-            return await msg.edit(payload(job));
+            return await msg.edit(await jobMessage(client, job, ch.guild));
         }
 
         const target = await client.channels.fetch(targetId);
-        const msg = await target.send(payload(job));
+        const msg = await target.send(await jobMessage(client, job, target.guild));
         await jobs.setBoardMessage(job.id, target.id, msg.id);
 
         if (job.board_channel_id && job.board_message_id) {

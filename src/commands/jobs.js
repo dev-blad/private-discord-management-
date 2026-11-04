@@ -3,7 +3,7 @@ const jobs = require("../services/jobs");
 const board = require("../utils/board");
 const { toCents, fmt, UserError } = require("../utils/money");
 const { requireSupport } = require("../utils/perms");
-const { jobEmbed } = require("../utils/embeds");
+const { jobMessage } = require("../utils/embeds");
 const { applySpendRole } = require("../utils/roles");
 
 const idOpt = o => o.setName("id").setDescription("Job number").setMinValue(1).setRequired(true);
@@ -83,7 +83,8 @@ module.exports = {
         if (sub === "info") {
             const job = await jobs.getJob(id);
             if (!job) throw new UserError(`Job #${id} doesn't exist.`);
-            return interaction.reply({ embeds: [jobEmbed(job)], ephemeral: true });
+            const m = await jobMessage(interaction.client, job, interaction.guild);
+            return interaction.reply({ embeds: m.embeds, ephemeral: true });
         }
 
         if (sub === "list") {

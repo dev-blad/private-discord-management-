@@ -292,7 +292,7 @@ try {
         await board.moveBoard(client, claimed);
         assert.equal(sent.at(-1).ch, "C2");
         assert.equal(deleted.length, 1);
-        assert.equal(sent.at(-1).m.components.length, 0);
+        assert.equal(sent.at(-1).m.components[0].components[0].data.disabled, true);
 
         const done = await jobs.completeJob({ jobId: job.id, actorId: S });
         await board.moveBoard(client, done);
