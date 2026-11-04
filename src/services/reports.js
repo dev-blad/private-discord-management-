@@ -35,7 +35,11 @@ const EXPORTS = {
     wallets: "SELECT * FROM wallets ORDER BY discord_id",
     ledger: "SELECT * FROM ledger ORDER BY id",
     jobs: "SELECT * FROM jobs ORDER BY id",
-    payouts: "SELECT * FROM payouts ORDER BY id"
+    payouts: "SELECT * FROM payouts ORDER BY id",
+    monthly: `SELECT to_char(date_trunc('month', completed_at), 'YYYY-MM') AS month, count(*) AS jobs,
+                     sum(price_cents) AS revenue_cents, sum(worker_cents) AS worker_cents,
+                     sum(COALESCE(support_cents,0)) AS support_cents, sum(house_cents) AS house_cents
+              FROM jobs WHERE status='completed' GROUP BY 1 ORDER BY 1`
 };
 
 function csvCell(v) {

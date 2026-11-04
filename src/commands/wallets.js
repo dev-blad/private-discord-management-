@@ -14,6 +14,9 @@ module.exports = {
         .addSubcommand(s => s.setName("add").setDescription("Add funds to a customer's balance (staff)")
             .addUserOption(o => o.setName("user").setDescription("Customer").setRequired(true))
             .addNumberOption(amountOpt)
+            .addStringOption(o => o.setName("source").setDescription("How they paid (for your analytics)").addChoices(
+                { name: "Crypto", value: "crypto" }, { name: "PayPal", value: "paypal" },
+                { name: "GP (gold)", value: "gp" }, { name: "Other", value: "other" }))
             .addStringOption(o => o.setName("note").setDescription("Reason / payment reference").setMaxLength(200)))
         .addSubcommand(s => s.setName("remove").setDescription("Remove funds from a customer's balance (staff)")
             .addUserOption(o => o.setName("user").setDescription("Customer").setRequired(true))
@@ -53,7 +56,7 @@ module.exports = {
         const cents = toCents(interaction.options.getNumber("amount"));
         const note = interaction.options.getString("note");
         const fn = sub === "add" ? wallets.deposit : wallets.charge;
-        const r = await fn({ discordId: target.id, cents, actorId: interaction.user.id, note });
+        const r = await fn({ discordId: target.id, cents, actorId: interaction.user.id, note, ...(sub === "add" ? { source: interaction.options.getString("source") } : {}) });
         return interaction.reply({
             content: `✅ ${sub === "add" ? "Added" : "Removed"} ${fmt(cents)} ${sub === "add" ? "to" : "from"} **${target.username}**. New balance: ${fmt(r.balance)}`,
             ephemeral: true

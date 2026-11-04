@@ -461,6 +461,32 @@ try {
         chain.setSender(null);
     });
 
+    await test("profit split 7/7/1, withdrawals, deposit sources, analytics", async () => {
+        const profit = require("../src/services/profit");
+        const analytics = require("../src/services/analytics");
+        // $100 job, worker 80, support 5, house 15 -> 7 + 7 + 1 buffer
+        assert.deepEqual(profit.splitHouse({ houseCents: 1500, revenueCents: 10000, bufferPct: 1, partnerCount: 2 }), { buffer: 100, pool: 1400, each: 700, remainder: 0 });
+        assert.equal(profit.splitHouse({ houseCents: 2000, revenueCents: 10000, bufferPct: 1, partnerCount: 2 }).each, 950);
+        assert.equal(profit.splitHouse({ houseCents: 50, revenueCents: 10000, bufferPct: 1, partnerCount: 2 }).buffer, 50);
+
+        await config.set("partner_ids", `${S},100000000000000088`);
+        await config.set("house_buffer_pct", "1");
+        const s1 = await profit.summary();
+        assert.equal(s1.partners.length, 2);
+        assert.ok(s1.each > 0 && s1.buffer > 0);
+        await profit.withdraw({ partnerId: S, cents: 100, actorId: S, note: "test" });
+        assert.equal((await profit.summary()).partners[0].taken, 100);
+        await rejects(profit.withdraw({ partnerId: S, cents: 999999999, actorId: S }), "available");
+        await rejects(profit.withdraw({ partnerId: "999", cents: 100, actorId: S }), "partner");
+
+        await wallets.deposit({ discordId: C, cents: 1234, actorId: S, source: "paypal" });
+        const a = await analytics.overview(30);
+        assert.ok(a.jobs >= 1 && a.revenue > 0 && a.deposits.some(d => d.source === "paypal"));
+        const ob = await profit.obligations();
+        assert.ok(ob.earnings >= 0 && ob.customers > 0);
+        assert.ok((await reports.exportCsv("monthly")).startsWith("month,jobs"));
+    });
+
     await test("job roles and !w lines", async () => {
         await jobroles.add("555", "Caper"); await jobroles.add("555", "Caper2");
         assert.equal((await jobroles.list()).length, 1);

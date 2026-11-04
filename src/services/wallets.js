@@ -6,7 +6,7 @@ const { UserError, fmt } = require("../utils/money");
  * Locks the wallet row, refuses to go negative, updates the cached total and
  * appends an immutable ledger row. This is the ONLY place balances change.
  */
-async function applyLedger(client, { discordId, bucket, delta, kind, jobId = null, payoutId = null, actorId = null, note = null }) {
+async function applyLedger(client, { discordId, bucket, delta, kind, jobId = null, payoutId = null, actorId = null, note = null, source = null }) {
     if (!Number.isInteger(delta) || delta === 0) throw new Error("delta must be a non-zero integer (cents)");
     const col = bucket === "balance" ? "balance_cents" : bucket === "earnings" ? "earnings_cents" : null;
     if (!col) throw new Error(`unknown bucket ${bucket}`);
@@ -29,9 +29,9 @@ async function applyLedger(client, { discordId, bucket, delta, kind, jobId = nul
         [discordId, next, spent]
     );
     await client.query(
-        `INSERT INTO ledger (discord_id, bucket, delta_cents, balance_after_cents, kind, job_id, payout_id, actor_id, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [discordId, bucket, delta, next, kind, jobId, payoutId, actorId, note]
+        `INSERT INTO ledger (discord_id, bucket, delta_cents, balance_after_cents, kind, job_id, payout_id, actor_id, note, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [discordId, bucket, delta, next, kind, jobId, payoutId, actorId, note, source]
     );
     return { balance: bucket === "balance" ? next : w.balance_cents, earnings: bucket === "earnings" ? next : w.earnings_cents, spent };
 }
@@ -46,10 +46,10 @@ async function getWallet(discordId) {
     };
 }
 
-async function deposit({ discordId, cents, actorId, note, kind = "deposit" }) {
+async function deposit({ discordId, cents, actorId, note, kind = "deposit", source = null }) {
     if (cents <= 0) throw new UserError("Amount must be greater than zero.");
     return withTx(async c => {
-        const r = await applyLedger(c, { discordId, bucket: "balance", delta: cents, kind, actorId, note });
+        const r = await applyLedger(c, { discordId, bucket: "balance", delta: cents, kind, actorId, note, source });
         await c.query("INSERT INTO audit_log (actor_id, action, entity, entity_id, data) VALUES ($1,'wallet.add','wallet',$2,$3)",
             [actorId, discordId, { cents, note }]);
         return r;
