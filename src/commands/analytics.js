@@ -16,19 +16,15 @@ module.exports = {
         requireSupport(interaction.member);
         const period = interaction.options.getInteger("period") ?? 30;
         const a = await analytics.overview(period || null);
-        const dep = a.deposits.length ? a.deposits.map(d => `${d.source}: ${fmt(Number(d.total))} (${d.n})`).join("\n") : "None yet";
+        const { section } = require("../utils/box");
+        const dep = a.deposits.length ? a.deposits.map(d => [d.source, `${fmt(Number(d.total))} (${d.n})`]) : [["None yet", "-"]];
         const top = a.topWorkers.length ? a.topWorkers.map((w, i) => `${i + 1}. <@${w.id}> ${fmt(Number(w.total))} (${w.jobs})`).join("\n") : "None yet";
-        const e = new EmbedBuilder().setColor(0x3498db).setTitle(`📊 ${LABEL[period]}`).addFields(
-            { name: "Jobs completed", value: String(a.jobs), inline: true },
-            { name: "Revenue", value: fmt(a.revenue), inline: true },
-            { name: "Average order", value: fmt(a.avgOrder), inline: true },
-            { name: "Paid to workers", value: fmt(a.workers), inline: true },
-            { name: "Support cuts", value: fmt(a.support), inline: true },
-            { name: "House profit", value: `${fmt(a.house)} (${a.margin.toFixed(1)}%)`, inline: true },
-            { name: "New customers", value: String(a.newCustomers), inline: true },
-            { name: "Cancelled jobs", value: String(a.cancelled), inline: true },
-            { name: "Deposits by source", value: dep },
-            { name: "Top workers", value: top });
+        const e = new EmbedBuilder().setColor(0x3498db).setTitle(`📊 ${LABEL[period]}`).setDescription(
+            section("Orders", [["Completed", a.jobs], ["Cancelled", a.cancelled], ["New customers", a.newCustomers], ["Average order", fmt(a.avgOrder)]], 14) + "\n\n" +
+            section("Money", [["Revenue", fmt(a.revenue)], ["Workers", fmt(a.workers)], ["Support cuts", fmt(a.support)],
+                ["House profit", `${fmt(a.house)} (${a.margin.toFixed(1)}%)`]], 14) + "\n\n" +
+            section("Deposits by source", dep, 14) + `\n\n**Top workers**\n${top}`)
+            .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined }).setTimestamp();
         return interaction.reply({ embeds: [e], ephemeral: true, allowedMentions: { parse: [] } });
     }
 };

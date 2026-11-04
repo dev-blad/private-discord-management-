@@ -37,20 +37,22 @@ module.exports = {
         }
 
         if (sub === "check") {
-            const w = await wallets.getWallet(target.id);
-            const e = new EmbedBuilder().setTitle(`Wallet — ${target.username}`).setColor(0x2ecc71).addFields(
-                { name: "Balance", value: fmt(w.balance), inline: true },
-                { name: "Earnings", value: fmt(w.earnings), inline: true },
-                { name: "Lifetime spent", value: fmt(w.spent), inline: true });
-            return interaction.reply({ embeds: [e], ephemeral: true });
+            const member = self ? interaction.member : await interaction.guild.members.fetch(target.id).catch(() => null);
+            const embed = await require("../prefix/w").walletEmbed({ guild: interaction.guild, user: target, member });
+            return interaction.reply({ embeds: [embed], ephemeral: true });
         }
 
         if (sub === "history") {
             const rows = await wallets.history(target.id, 15);
-            const text = rows.length
-                ? rows.map(r => `\`${r.created_at.toISOString().slice(0, 16).replace("T", " ")}\` ${r.delta_cents > 0 ? "+" : ""}${fmt(r.delta_cents)} ${r.bucket} — ${r.kind}${r.note ? ` (${r.note})` : ""}`).join("\n")
-                : "No activity yet.";
-            return interaction.reply({ content: `**History for ${target.username}**\n${text}`, ephemeral: true });
+            const lines = rows.map(r => {
+                const when = Math.floor(r.created_at.getTime() / 1000);
+                return `<t:${when}:d> \`${((r.delta_cents > 0 ? "+" : "-") + fmt(Math.abs(r.delta_cents))).padStart(10)}\` ${r.bucket} · ${r.kind}${r.note ? ` (${r.note})` : ""}`;
+            });
+            const e = new EmbedBuilder().setColor(0x00ae86).setTitle(`History — ${target.username}`)
+                .setDescription(lines.join("\n") || "No activity yet.")
+                .setThumbnail(target.displayAvatarURL({ size: 128 }))
+                .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined });
+            return interaction.reply({ embeds: [e], ephemeral: true });
         }
 
         const cents = toCents(interaction.options.getNumber("amount"));

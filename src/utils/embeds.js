@@ -67,21 +67,23 @@ async function jobMessage(client, job, guild) {
 }
 
 function payoutEmbed(p) {
+    const { rows } = require("./box");
     const colors = { requested: 0xf1c40f, approved: 0x3498db, sending: 0x9b59b6, paid: 0x2ecc71, rejected: 0xe74c3c };
-    const e = new EmbedBuilder()
-        .setTitle(`Payout #${p.id} — ${p.status.toUpperCase()}`)
-        .setColor(colors[p.status])
-        .addFields(
-            { name: "Worker", value: `<@${p.discord_id}>`, inline: true },
-            { name: "Amount", value: fmt(p.amount_cents), inline: true },
-            { name: "Method", value: p.method, inline: true },
-            { name: "Address", value: "```" + p.address + "```" }
-        )
-        .setTimestamp(new Date(p.requested_at));
-    if (p.decided_by) e.addFields({ name: "Decided by", value: `<@${p.decided_by}>`, inline: true });
-    if (p.paid_ref) e.addFields({ name: "Reference", value: /^0x[0-9a-fA-F]{64}$/.test(p.paid_ref) ? `[${p.paid_ref}](${require("../services/chain").explorer(p.method, p.paid_ref)})` : "```" + p.paid_ref + "```" });
-    if (p.note) e.addFields({ name: "Note", value: p.note });
-    return e;
+    const ref = p.paid_ref && (/^0x[0-9a-fA-F]{64}$/.test(p.paid_ref)
+        ? `[${p.paid_ref.slice(0, 10)}…${p.paid_ref.slice(-6)}](${require("../services/chain").explorer(p.method, p.paid_ref)})`
+        : `\`${p.paid_ref}\``);
+    let d = rows([
+        ["Payout ID", `#${p.id}`],
+        ["Worker", `<@${p.discord_id}>`],
+        ["Amount", fmt(p.amount_cents)],
+        ["Method", p.method],
+        ["Decided by", p.decided_by && /^\d+$/.test(p.decided_by) ? `<@${p.decided_by}>` : p.decided_by],
+        ["Reference", ref]
+    ]);
+    d += `\n\n**Address**\n\`\`\`${p.address}\`\`\``;
+    if (p.note) d += `\n**Note**\n${p.note}`;
+    return new EmbedBuilder().setColor(colors[p.status]).setTitle(`Payout #${p.id} — ${p.status.toUpperCase()}`)
+        .setDescription(d).setTimestamp(new Date(p.requested_at));
 }
 
 function payoutRow(p) {

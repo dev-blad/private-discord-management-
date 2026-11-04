@@ -58,45 +58,48 @@ function buildLines({ tag, isWorker, wallet, earned, rate, stats, discountText, 
     return lines;
 }
 
+/** The wallet card. Shared by !w and /wallet check. */
+async function walletEmbed({ guild, user, member }) {
+    const [wallet, stats, earned, roles, settings, tiers] = await Promise.all([
+        wallets.getWallet(user.id), jobStats(user.id), lifetimeEarned(user.id),
+        jobroles.list(), getCalcSettings(member), pricing.tiers()
+    ]);
+
+    const have = id => Boolean(id && member?.roles?.cache?.has(id));
+    const jobRoleNames = roles.filter(r => have(r.role_id)).map(r => r.name);
+    const isWorker = have(process.env.BOOSTER_ROLE_ID) || jobRoleNames.length > 0;
+
+    // best discount tier role they hold, e.g. "@VIP [5%]"
+    const tier = tiers.filter(t => have(t.role)).sort((a, b) => b.percent - a.percent)[0];
+    let discountText = null;
+    if (tier) {
+        const roleName = guild?.roles?.cache?.get(tier.role)?.name;
+        discountText = roleName ? `@${roleName} [${tier.percent}%]` : `[${tier.percent}%]`;
+    }
+
+    const lines = buildLines({
+        tag: `@${user.username}`, isWorker, wallet, earned, rate: settings.rate,
+        stats, discountText, jobRoleNames
+    });
+
+    return new EmbedBuilder()
+        .setColor(0x00ae86)
+        .setDescription((isWorker ? "Worker statistics and earnings" : "Customer wallet and spending") + "\n\n" + lines.join("\n"))
+        .setThumbnail(user.displayAvatarURL({ size: 256 }))
+        .setFooter({ text: guild?.name || " ", iconURL: guild?.iconURL?.() || undefined })
+        .setTimestamp();
+}
+
 module.exports = {
     name: "w",
     aliases: ["wallet"],
     buildLines,
+    walletEmbed,
     async execute(message) {
         // Staff can look at someone else with `!w @user`.
         const mentioned = message.mentions.users.first();
         const user = mentioned && isSupport(message.member) ? mentioned : message.author;
         const member = user.id === message.author.id ? message.member : await message.guild.members.fetch(user.id).catch(() => null);
-
-        const [wallet, stats, earned, roles, settings, tiers] = await Promise.all([
-            wallets.getWallet(user.id), jobStats(user.id), lifetimeEarned(user.id),
-            jobroles.list(), getCalcSettings(member), pricing.tiers()
-        ]);
-
-        const have = id => Boolean(id && member?.roles?.cache?.has(id));
-        const jobRoleNames = roles.filter(r => have(r.role_id)).map(r => r.name);
-        const isWorker = have(process.env.BOOSTER_ROLE_ID) || jobRoleNames.length > 0;
-
-        // best discount tier role they hold, e.g. "@VIP [5%]"
-        const tier = tiers.filter(t => have(t.role)).sort((a, b) => b.percent - a.percent)[0];
-        let discountText = null;
-        if (tier) {
-            const roleName = message.guild.roles.cache.get(tier.role)?.name;
-            discountText = roleName ? `@${roleName} [${tier.percent}%]` : `[${tier.percent}%]`;
-        }
-
-        const lines = buildLines({
-            tag: `@${user.username}`, isWorker, wallet, earned, rate: settings.rate,
-            stats, discountText, jobRoleNames
-        });
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00ae86)
-            .setDescription((isWorker ? "Worker statistics and earnings" : "Customer wallet and spending") + "\n\n" + lines.join("\n"))
-            .setThumbnail(user.displayAvatarURL({ size: 256 }))
-            .setFooter(footer(message))
-            .setTimestamp();
-
-        return message.reply({ embeds: [embed] });
+        return message.reply({ embeds: [await walletEmbed({ guild: message.guild, user, member })] });
     }
 };

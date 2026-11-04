@@ -44,8 +44,9 @@ module.exports = {
         requireSupport(interaction.member);
         const list = await payouts.listPending();
         const text = list.length
-            ? list.map(p => `**#${p.id}** ${p.status} — ${fmt(p.amount_cents)} ${p.method} — <@${p.discord_id}>`).join("\n")
+            ? list.map(p => `**#${p.id}** \`${p.status.padEnd(9)}\` ${fmt(p.amount_cents)} ${p.method} · <@${p.discord_id}>`).join("\n")
             : "Nothing pending. 🎉";
-        return interaction.reply({ content: text, ephemeral: true });
+        return interaction.reply({ embeds: [new (require("discord.js").EmbedBuilder)().setColor(0x00ae86).setTitle("Payouts").setDescription(text)
+                .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined })], ephemeral: true });
     }
 };

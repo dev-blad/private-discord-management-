@@ -21,16 +21,16 @@ module.exports = {
         if (sub === "summary") {
             requireSupport(interaction.member);
             const r = await reports.summary();
-            const e = new EmbedBuilder().setTitle("📈 Business summary").setColor(0x9b59b6).addFields(
-                { name: "Jobs", value: `${r.open_jobs} open · ${r.claimed_jobs} claimed · ${r.completed_jobs} completed` },
-                { name: "Revenue (completed)", value: fmt(r.revenue_cents), inline: true },
-                { name: "House profit", value: fmt(r.profit_cents), inline: true },
-                { name: "Paid to workers (earned)", value: fmt(r.worker_cents), inline: true },
-                { name: "In escrow (open jobs)", value: fmt(r.escrow_cents), inline: true },
-                { name: "Customer balances held", value: fmt(r.customer_balances), inline: true },
-                { name: "Owed to workers", value: fmt(r.owed_to_workers), inline: true },
-                { name: "Payouts pending", value: `${r.pending_count} (${fmt(r.pending_cents)})`, inline: true },
-                { name: "Payouts paid out", value: fmt(r.paid_cents), inline: true });
+            const { section } = require("../utils/box");
+            const e = new EmbedBuilder().setTitle("📈 Business summary").setColor(0x9b59b6).setDescription(
+                section("Jobs", [["Open", r.open_jobs], ["Claimed", r.claimed_jobs], ["Completed", r.completed_jobs]], 16) + "\n\n" +
+                section("Money", [
+                    ["Revenue", fmt(r.revenue_cents)], ["House profit", fmt(r.profit_cents)], ["Paid to workers", fmt(r.worker_cents)],
+                    ["In escrow", fmt(r.escrow_cents)]], 16) + "\n\n" +
+                section("Owed", [
+                    ["Customer funds", fmt(r.customer_balances)], ["Worker earnings", fmt(r.owed_to_workers)],
+                    ["Payouts pending", `${r.pending_count} (${fmt(r.pending_cents)})`], ["Payouts sent", fmt(r.paid_cents)]], 16))
+                .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined }).setTimestamp();
             return interaction.reply({ embeds: [e], ephemeral: true });
         }
 

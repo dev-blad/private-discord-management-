@@ -75,9 +75,10 @@ module.exports = {
         if (sub === "list") {
             const rows = await jobs.listJobs({ status: interaction.options.getString("status") });
             const text = rows.length
-                ? rows.map(j => `**#${j.id}** ${j.status} — ${fmt(j.price_cents)} — <@${j.customer_id}>${j.worker_id ? ` → <@${j.worker_id}>` : ""}`).join("\n")
+                ? rows.map(j => `**#${j.id}** \`${j.status.padEnd(9)}\` ${fmt(j.price_cents)} · <@${j.customer_id}>${j.worker_id ? ` → <@${j.worker_id}>` : ""}`).join("\n")
                 : "No jobs found.";
-            return interaction.reply({ content: text, ephemeral: true });
+            return interaction.reply({ embeds: [new (require("discord.js").EmbedBuilder)().setColor(0x00ae86).setTitle("Jobs").setDescription(text)
+                .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined })], ephemeral: true });
         }
     }
 };
