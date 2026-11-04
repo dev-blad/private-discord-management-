@@ -22,7 +22,7 @@ async function jobStats(userId) {
 
 async function lifetimeEarned(userId) {
     const { rows } = await query(
-        "SELECT COALESCE(SUM(delta_cents),0)::bigint AS n FROM ledger WHERE discord_id=$1 AND bucket='earnings' AND kind='job_earning'", [userId]);
+        "SELECT COALESCE(SUM(delta_cents),0)::bigint AS n FROM ledger WHERE discord_id=$1 AND bucket='earnings' AND kind IN ('job_earning','support_cut')", [userId]);
     return Number(rows[0].n);
 }
 

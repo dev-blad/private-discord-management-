@@ -303,6 +303,27 @@ try {
         assert.equal((await jobs.getJob(job.id)).board_channel_id, "C3");
     });
 
+    await test("support cut: worker 80, support 5, house 15", async () => {
+        const SUP = "100000000000000077";
+        await wallets.deposit({ discordId: C, cents: 10000, actorId: S });
+        const { job } = await jobs.createJob({ customerId: C, priceCents: 10000, depositCents: 0, description: "x", imageUrl: null, channelId: "T", createdBy: SUP, supportPct: 5 });
+        await jobs.claimJob({ jobId: job.id, workerId: W });
+        const w0 = (await wallets.getWallet(W)).earnings;
+        const done = await jobs.completeJob({ jobId: job.id, actorId: S });
+        assert.equal(Number(done.worker_cents), 8000);
+        assert.equal(Number(done.support_cents), 500);
+        assert.equal(Number(done.house_cents), 1500);
+        assert.equal((await wallets.getWallet(SUP)).earnings, 500);
+        assert.equal((await wallets.getWallet(W)).earnings - w0, 8000);
+        await rejects(jobs.createJob({ customerId: C, priceCents: 100, depositCents: 0, description: "x", imageUrl: null, channelId: "T", createdBy: SUP, supportPct: 30 }), "over 100%");
+        const sr = require("../src/services/supportroles");
+        await sr.set("900", "Senior Support", 5); await sr.set("901", "Support", 2.5);
+        const member = ids => ({ roles: { cache: { has: id => ids.includes(id) } } });
+        assert.equal(await sr.cutFor(member(["900", "901"])), 5);
+        assert.equal(await sr.cutFor(member(["901"])), 2.5);
+        assert.equal(await sr.cutFor(member([])), 0);
+    });
+
     await test("job roles and !w lines", async () => {
         await jobroles.add("555", "Caper"); await jobroles.add("555", "Caper2");
         assert.equal((await jobroles.list()).length, 1);

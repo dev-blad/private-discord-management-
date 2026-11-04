@@ -42,7 +42,8 @@ module.exports = {
                 description: interaction.options.getString("description"),
                 imageUrl: image,
                 channelId: interaction.channelId,
-                createdBy: interaction.user.id
+                createdBy: interaction.user.id,
+                supportPct: await require("../services/supportroles").cutFor(interaction.member)
             });
 
             let posted = true, ticketNote = "";
@@ -70,7 +71,9 @@ module.exports = {
             const job = await jobs.completeJob({ jobId: id, actorId: interaction.user.id });
             await refreshBoard(interaction.client, job);
             return interaction.reply({
-                content: `✅ Job #${id} completed. <@${job.worker_id}> earned ${fmt(job.worker_cents)}; house profit ${fmt(job.house_cents)}.`,
+                content: `✅ Job #${id} completed. <@${job.worker_id}> earned ${fmt(job.worker_cents)}`  +
+                    (job.support_cents > 0 ? `; <@${job.created_by}> earned ${fmt(job.support_cents)} (support cut)` : "") +
+                    `; house profit ${fmt(job.house_cents)}.`,
                 ephemeral: true
             });
         }
