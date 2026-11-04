@@ -260,11 +260,17 @@ try {
         assert.equal(byAlias[0].name, "Cook's Assistant");
     });
 
-    await test("dropdown menus respect Discord limits", () => {
-        const entries = Array.from({ length: 60 }, (_, i) => ({ key: `k${i}`, name: `Name ${i}`, data: { location: "Big", emoji: "" } }));
-        const rows = pmenu.buildMenus(entries, { emojis: false });
-        assert.equal(rows.length, 3);
+    await test("dropdown menus respect Discord limits and show a header option", () => {
+        const mk = (n, loc) => Array.from({ length: n }, (_, i) => ({ key: `${loc}${i}`, name: `Name ${i}`, data: { location: loc, emoji: "<:a:123456789012345678>" } }));
+        const entries = [...mk(60, "Big"), ...mk(3, "Raids"), ...mk(2, "Skilling")];
+        const rows = pmenu.buildMenus(entries);
+        assert.equal(rows.length, 3 + 1 + 1);
         assert.ok(rows.every(r => r.components[0].options.length <= 25));
+        const opts = i => rows[i].components[0].options.map(o => o.data);
+        const first = opts(0)[0];
+        assert.ok(first.default && first.value.startsWith(pmenu.HEADER_PREFIX) && first.emoji);
+        assert.equal(opts(0)[0].label, "Skilling");   // default order puts Skilling first
+        assert.equal(opts(1)[0].label, "Raids");
         assert.ok(pmenu.chunkRows(rows).every(c => c.length <= 5));
     });
 

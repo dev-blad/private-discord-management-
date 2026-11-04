@@ -1,4 +1,4 @@
-const { ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require("discord.js");
+const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const { query } = require("../db");
 const catalog = require("../services/catalog");
 const config = require("../services/config");
@@ -15,36 +15,72 @@ function parseEmoji(raw) {
     return s && s.length <= 8 && !/\s/.test(s) ? { name: s } : undefined;
 }
 
-/** One dropdown per Pricing-tab location (25 options max each), in sheet order. */
-function buildMenus(entries, { emojis = true } = {}) {
+// Display order of the dropdowns (matches the live server). Locations not listed follow in sheet order.
+const DEFAULT_ORDER = [
+    "Skilling", "Bundles", "Ironman Gathering", "Minigames", "Combat Achievements", "PvM & Bossing",
+    "Pets & Misc Boosting", "Raids", "Infernals, Firecapes & Quivers", "Questing", "Skilling Outfits",
+    "Achievement Diaries & Combat Bundles", "Megascales & Mystic Chinning", "Endgame Kits", "Guaranteed Items"
+];
+const HEADER_PREFIX = "pm_header_";
+const ITEMS_PER_MENU = 24; // the 25th slot is the collapsed "header" option
+
+const orderKey = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * One dropdown per Pricing-tab location. The closed menu shows a default-selected
+ * "header" option (location emoji + name); the items sit below it. After a pick the
+ * message is edited so the menu falls back to the header.
+ */
+function buildMenus(entries, { emojis = true, order = DEFAULT_ORDER } = {}) {
     const byLocation = new Map();
     for (const e of entries) {
         const loc = e.data.location;
         if (!byLocation.has(loc)) byLocation.set(loc, []);
         byLocation.get(loc).push(e);
     }
+    const rank = loc => { const i = order.findIndex(o => orderKey(o) === orderKey(loc)); return i === -1 ? order.length : i; };
+    const locations = [...byLocation.keys()].map((loc, i) => ({ loc, i })).sort((a, b) => rank(a.loc) - rank(b.loc) || a.i - b.i);
 
     const rows = [];
-    let locIndex = 0;
-    for (const [loc, items] of byLocation) {
-        const parts = Math.ceil(items.length / 25);
+    locations.forEach(({ loc }, locIndex) => {
+        const items = byLocation.get(loc);
+        const parts = Math.ceil(items.length / ITEMS_PER_MENU);
         for (let p = 0; p < parts; p++) {
-            const slice = items.slice(p * 25, p * 25 + 25);
+            const slice = items.slice(p * ITEMS_PER_MENU, (p + 1) * ITEMS_PER_MENU);
+            const headLabel = (parts > 1 ? `${loc} (${p + 1}/${parts})` : loc).slice(0, 100);
+            const header = { label: headLabel, value: `${HEADER_PREFIX}${locIndex}_${p}`, default: true };
+            const headEmoji = emojis ? parseEmoji(items[0].data.emoji) : undefined;
+            if (headEmoji) header.emoji = headEmoji;
+
             const menu = new StringSelectMenuBuilder()
                 .setCustomId(`pm:${locIndex}:${p}`)
-                .setPlaceholder((parts > 1 ? `${loc} (${p + 1}/${parts})` : loc).slice(0, 150))
+                .setPlaceholder(headLabel.slice(0, 150))
                 .setMinValues(1).setMaxValues(1)
-                .addOptions(slice.map(e => {
+                .addOptions([header, ...slice.map(e => {
                     const opt = { label: e.name.slice(0, 100), value: e.key.slice(0, 100) };
                     const emoji = emojis ? parseEmoji(e.data.emoji) : undefined;
                     if (emoji) opt.emoji = emoji;
                     return opt;
-                }));
+                })]);
             rows.push(new ActionRowBuilder().addComponents(menu));
         }
-        locIndex++;
-    }
+    });
     return rows;
+}
+
+/** Link buttons under the menus. Config pricing_link_1..5 = "Label | https://url | optional emoji". */
+async function buildLinkRow() {
+    const buttons = [];
+    for (let n = 1; n <= 5; n++) {
+        const raw = await config.get(`pricing_link_${n}`, "");
+        const [label, url, emoji] = String(raw).split("|").map(x => x.trim());
+        if (!label || !/^https?:\/\//.test(url || "")) continue;
+        const b = new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(label.slice(0, 80)).setURL(url);
+        const em = parseEmoji(emoji);
+        if (em) b.setEmoji(em);
+        buttons.push(b);
+    }
+    return buttons.length ? new ActionRowBuilder().addComponents(buttons) : null;
 }
 
 /** Discord allows 5 rows per message. */
@@ -139,21 +175,27 @@ async function buildReply(item) {
     return { embeds: [e] };
 }
 
-/** After a pick, put every dropdown on the posted message back to its placeholder. */
+/** After a pick, put every dropdown on the posted message back to its header option. */
 async function resetMenus(interaction) {
     try {
         const fresh = buildMenus(await catalog.getTab(MENU_TAB));
         const byId = new Map(fresh.map(r => [r.components[0].data.custom_id, r]));
-        const rows = interaction.message.components
-            .map(r => byId.get(r.components[0]?.customId))
-            .filter(Boolean);
-        if (rows.length) await interaction.message.edit({ components: rows });
+        const rows = interaction.message.components.map(r => {
+            const c = r.components[0];
+            return byId.get(c?.customId) || ActionRowBuilder.from(r);
+        });
+        await interaction.message.edit({ components: rows });
     } catch (err) {
         console.log("⚠️ Could not reset dropdown:", err.message);
     }
 }
 
 async function handleSelect(interaction) {
+    // Clicking the collapsed header itself does nothing except put the menu back.
+    if (interaction.values[0].startsWith(HEADER_PREFIX)) {
+        await interaction.deferUpdate();
+        return resetMenus(interaction);
+    }
     const item = await findMenuItem(interaction.values[0]);
     if (!item) return interaction.reply({ content: "❌ That option is no longer in the pricing list. Ask staff to repost the menu.", ephemeral: true });
 
@@ -165,4 +207,4 @@ async function handleSelect(interaction) {
     await resetMenus(interaction);
 }
 
-module.exports = { MENU_TAB, parseEmoji, buildMenus, chunkRows, findMenuItem, buildReply, handleSelect };
+module.exports = { MENU_TAB, DEFAULT_ORDER, HEADER_PREFIX, parseEmoji, buildMenus, buildLinkRow, chunkRows, findMenuItem, buildReply, handleSelect };
