@@ -15,8 +15,8 @@ const ASSETS = {
     "USDT-ERC20":   { label: "USDT (Ethereum)", symbol: "USDT", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xdAC17F958D2ee523a2206206994597C13D831ec7", defaultMaxGwei: 20 },
     "USDC-ERC20":   { label: "USDC (Ethereum)", symbol: "USDC", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", defaultMaxGwei: 20 },
     "USDC-BASE":    { label: "USDC (Base)",     symbol: "USDC", decimals: 6, chainId: 8453,  gas: "ETH", rpcEnv: "BASE_RPC_URL",     rpc: "https://mainnet.base.org",            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
-    "USDT-POLYGON": { label: "USDT (Polygon)",  symbol: "USDT", decimals: 6, chainId: 137,   gas: "POL", rpcEnv: "POLYGON_RPC_URL",  rpc: "https://polygon-rpc.com",             token: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F" },
-    "USDT-ARBITRUM":{ label: "USDT (Arbitrum)", symbol: "USDT", decimals: 6, chainId: 42161, gas: "ETH", rpcEnv: "ARBITRUM_RPC_URL", rpc: "https://arb1.arbitrum.io/rpc",        token: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9" }
+    "USDT-POLYGON": { label: "USDT (Polygon)",  symbol: "USDT", decimals: 6, chainId: 137,   gas: "POL", rpcEnv: "POLYGON_RPC_URL",  rpc: "https://polygon-bor-rpc.publicnode.com", token: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F" },
+    "USDT-ARBITRUM":{ label: "USDT (Arbitrum)", symbol: "USDT", altSymbols: ["USD₮0"], decimals: 6, chainId: 42161, gas: "ETH", rpcEnv: "ARBITRUM_RPC_URL", rpc: "https://arb1.arbitrum.io/rpc",        token: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9" }
 };
 
 let override = null;
@@ -57,7 +57,7 @@ function real(method) {
     const verify = async () => {
         if (verified) return;
         const [sym, dec] = await Promise.all([token.symbol(), token.decimals()]);
-        if (sym !== a.symbol || Number(dec) !== a.decimals) throw new Error(`Token check failed on ${a.label}: found ${sym}/${dec}`);
+        if (![a.symbol, ...(a.altSymbols || [])].includes(sym) || Number(dec) !== a.decimals) throw new Error(`Token check failed on ${a.label}: found ${sym}/${dec}`);
         verified = true;
     };
     const s = {
