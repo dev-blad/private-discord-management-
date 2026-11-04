@@ -3,8 +3,21 @@ const { Client, GatewayIntentBits, Collection, REST, Routes } = require("discord
 const fs = require("fs");
 const path = require("path");
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// MessageContent is a privileged intent: switch it on in the Discord developer
+// portal (Bot page) or the bot will fail to log in.
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+});
 client.commands = new Collection();
+
+// Prefix commands (!mg, !syncdatabase, ...)
+client.prefixCommands = new Collection();
+const prefixPath = path.join(__dirname, "prefix");
+for (const file of fs.readdirSync(prefixPath).filter(f => f.endsWith(".js"))) {
+    const cmd = require(path.join(prefixPath, file));
+    client.prefixCommands.set(cmd.name, cmd);
+    for (const alias of cmd.aliases || []) client.prefixCommands.set(alias, cmd);
+}
 
 // Load command files
 const commands = [];

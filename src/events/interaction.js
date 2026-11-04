@@ -79,6 +79,10 @@ module.exports = {
                 if (command) await command.execute(interaction, client);
                 return;
             }
+            if (interaction.isStringSelectMenu()) {
+                if (interaction.customId.startsWith("pm:")) return await require("../utils/pricingMenu").handleSelect(interaction);
+                return;
+            }
             if (interaction.isButton()) {
                 const [action, rawId] = interaction.customId.split(":");
                 const id = Number(rawId);

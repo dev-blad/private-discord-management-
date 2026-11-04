@@ -143,6 +143,143 @@ try {
         assert.equal(await config.get("worker_pct"), "80");
     });
 
+    // ---- catalog / calculators / dropdown / !w (synthetic fixtures only) ----
+    const catalog = require("../src/services/catalog");
+    const calc = require("../src/utils/calc");
+    const sPrefix = require("../src/prefix/s");
+    const bPrefix = require("../src/prefix/b");
+    const qPrefix = require("../src/prefix/q");
+    const wPrefix = require("../src/prefix/w");
+    const pmenu = require("../src/utils/pricingMenu");
+    const jobroles = require("../src/services/jobroles");
+
+    const pvmRows = [
+        ["Vorkath", "Title", "Kill", "Notes"],
+        ["", "Price", 2.5, ""],
+        ["", "Memo", "per kill", "Needs DS2"],
+        ["", "Aliases", "vork", "vorkath section"],
+        ["Barrows", "Title", "Kill", "Notes"],
+        ["", "Price", 4, ""],
+        ["", "Aliases", "brr", "barrows section"],
+    ];
+    const mgRows = [
+        ["Tithe Farm", "Title", "Full", "Half"],
+        ["", "Price", 10, 6],
+        ["", "Memo", "a", "b"],
+        ["", "Aliases", "tf", "tithe", "tf half"],
+    ];
+    const skillRows = [
+        ["Agility", "Calculation", "", "Laps", "Rooftop"],
+        ["", "startLevel", "", 1, 50],
+        ["", "endLevel", "", 50, 99],
+        ["", "$/xp", "", 0.00001, 0.00002],
+        ["", "Method", "Some notes", "Basic", "Roofs"],
+    ];
+    const questRows = [
+        ["Group", "quest-name", "Price"],
+        ["Desert", "Desert Treasure", 5, "", "dt"],
+        ["Desert", "Icthlarin's Little Helper", 3],
+        ["Misc", "Cook's Assistant", 1, "", "cooks"],
+    ];
+    const menuRows = [
+        ["Name", "Location", "Thumbnail", "Image", "Emoji"],
+        ["Vorkath", "PvM", "", "", ""],
+        ["Agility", "Skilling", "", "", ""],
+    ];
+    const tabs = () => [
+        { title: "PvM", rows: pvmRows }, { title: "Minigames", rows: mgRows },
+        { title: "Skilling", rows: skillRows }, { title: "Quests", rows: questRows },
+        { title: "Pricing", rows: menuRows }, { title: "Wallets", rows: [["x"]] }
+    ];
+
+    await test("sheet parsers", () => {
+        const b = catalog.parseBlocks(pvmRows).entries;
+        assert.equal(b.length, 2);
+        assert.deepEqual(b[0].data.aliases, ["vorkath section"]);
+        assert.deepEqual(b[0].data.options[0].aliases, ["vork"]);
+        const m = catalog.parseBlocks(mgRows).entries[0];
+        assert.equal(m.data.hasNotes, false);
+        assert.ok(m.data.aliases.includes("tf half"));
+        assert.equal(catalog.parseSkilling(skillRows).entries[0].data.columns.length, 2);
+        assert.equal(catalog.parseQuests(questRows).entries.length, 3);
+        assert.equal(catalog.parseMenu(menuRows).entries.length, 2);
+        assert.equal(catalog.detectTabType(questRows), "quests");
+        assert.equal(catalog.detectTabType(menuRows), "menu");
+        assert.equal(catalog.detectTabType(skillRows), "skilling");
+        assert.equal(catalog.detectTabType(pvmRows), "blocks");
+    });
+
+    await test("sync loads tabs, ignores Wallets, is repeatable", async () => {
+        const r = await catalog.syncCatalog({ fetchTabs: async () => tabs() });
+        assert.ok(r.totalEntries >= 8);
+        await catalog.syncCatalog({ fetchTabs: async () => tabs() });
+        assert.equal((await catalog.getTab("PvM")).length, 2);
+        assert.equal((await catalog.getTab("Wallets")).length, 0);
+    });
+
+    await test("sync rejects empty or shrinking tabs unless forced", async () => {
+        const many = [["Name", "Location"], ...Array.from({ length: 8 }, (_, i) => [`Item${i}`, "PvM"])];
+        await catalog.syncCatalog({ fetchTabs: async () => [{ title: "Pricing", rows: many }] });
+        assert.equal((await catalog.getTab("Pricing")).length, 8);
+        const small = [["Name", "Location"], ["Item0", "PvM"]];
+        const r = await catalog.syncCatalog({ fetchTabs: async () => [{ title: "Pricing", rows: small }] });
+        assert.equal(r.tabs[0].status, "rejected");
+        assert.equal((await catalog.getTab("Pricing")).length, 8);
+        const f = await catalog.syncCatalog({ fetchTabs: async () => [{ title: "Pricing", rows: small }], force: true });
+        assert.equal(f.tabs[0].status, "ok");
+        assert.equal((await catalog.getTab("Pricing")).length, 1);
+    });
+
+    await test("!b lookup and output", async () => {
+        const entries = await catalog.getTab("PvM");
+        const hit = calc.lookupInBlocks(entries, "vork");
+        assert.equal(hit.entry.name, "Vorkath");
+        assert.equal(hit.option.title, "Kill");
+        const sec = calc.lookupInBlocks(entries, "barrows section");
+        assert.equal(sec.option, null);
+        const d = bPrefix.describe(sec, 2, 0, 0.18);
+        assert.ok(d.includes("$8.00"));
+        assert.equal(calc.lookupInBlocks(entries, "zzz"), null);
+    });
+
+    await test("!s pricing math", async () => {
+        const entry = (await catalog.getTab("Skilling"))[0];
+        const g = sPrefix.priceRange(entry, 1, 99);
+        const total = g.reduce((n, x) => n + x.totalUsd, 0);
+        assert.ok(total > 0);
+        const clipped = sPrefix.priceRange(entry, 60, 70);
+        assert.equal(clipped.length, 1);
+        assert.equal(sPrefix.priceRange(entry, 99, 99).length, 0);
+    });
+
+    await test("!q picks quests by group and alias", async () => {
+        const entries = await catalog.getTab("Quests");
+        const byGroup = qPrefix.pickQuests(entries, ["desert"]);
+        assert.equal(byGroup.length, 2);
+        const byAlias = qPrefix.pickQuests(entries, ["cooks"]);
+        assert.equal(byAlias[0].name, "Cook's Assistant");
+    });
+
+    await test("dropdown menus respect Discord limits", () => {
+        const entries = Array.from({ length: 60 }, (_, i) => ({ key: `k${i}`, name: `Name ${i}`, data: { location: "Big", emoji: "" } }));
+        const rows = pmenu.buildMenus(entries, { emojis: false });
+        assert.equal(rows.length, 3);
+        assert.ok(rows.every(r => r.components[0].options.length <= 25));
+        assert.ok(pmenu.chunkRows(rows).every(c => c.length <= 5));
+    });
+
+    await test("job roles and !w lines", async () => {
+        await jobroles.add("555", "Caper"); await jobroles.add("555", "Caper2");
+        assert.equal((await jobroles.list()).length, 1);
+        assert.equal(await jobroles.remove("555"), true);
+        assert.equal(await jobroles.remove("555"), false);
+        const stats = { asWorker: { orders: 3, completed: 2, cancelled: 1, in_progress: 0 }, asCustomer: { orders: 1, cancelled: 0 } };
+        const wl = wPrefix.buildLines({ tag: "@w", isWorker: true, wallet: { balance: 0, earnings: 1234, spent: 0 }, earned: 5000, rate: 0.18, stats, discountText: null, jobRoleNames: ["Caper"] }).join("\n");
+        assert.ok(wl.includes("$12.34") && wl.includes("$50.00") && wl.includes("@Caper"));
+        const cl = wPrefix.buildLines({ tag: "@c", isWorker: false, wallet: { balance: 1800, earnings: 0, spent: 3600 }, earned: 0, rate: 0.18, stats, discountText: "@VIP [5%]", jobRoleNames: [] }).join("\n");
+        assert.ok(cl.includes("100M") && cl.includes("200M") && cl.includes("@VIP [5%]"));
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();
