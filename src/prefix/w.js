@@ -28,7 +28,7 @@ async function lifetimeEarned(userId) {
 
 /** Lines for the monospace box. Pure given its inputs, so it can be tested. */
 function buildLines({ tag, isWorker, wallet, earned, rate, stats, discountText, jobRoleNames }) {
-    const lines = [mono("User", tag)];
+    const lines = [`\`${pad("User")}:\` ${tag}`];
 
     if (isWorker) {
         lines.push(mono("USD Balance", `$${usd(wallet.earnings)}`));
@@ -78,7 +78,7 @@ async function walletEmbed({ guild, user, member }) {
     }
 
     const lines = buildLines({
-        tag: `@${user.username}`, isWorker, wallet, earned, rate: settings.rate,
+        tag: `<@${user.id}>`, isWorker, wallet, earned, rate: settings.rate,
         stats, discountText, jobRoleNames
     });
 

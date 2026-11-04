@@ -48,8 +48,7 @@ module.exports = {
                 const when = Math.floor(r.created_at.getTime() / 1000);
                 return `<t:${when}:d> \`${((r.delta_cents > 0 ? "+" : "-") + fmt(Math.abs(r.delta_cents))).padStart(10)}\` ${r.bucket} · ${r.kind}${r.note ? ` (${r.note})` : ""}`;
             });
-            const e = new EmbedBuilder().setColor(0x00ae86).setTitle(`History — ${target.username}`)
-                .setDescription(lines.join("\n") || "No activity yet.")
+            const e = new EmbedBuilder().setColor(0x00ae86).setTitle("Wallet History").setDescription(`<@${target.id}>\n\n` + (lines.join("\n") || "No activity yet."))
                 .setThumbnail(target.displayAvatarURL({ size: 128 }))
                 .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined });
             return interaction.reply({ embeds: [e], ephemeral: true });

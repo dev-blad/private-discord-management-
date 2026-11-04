@@ -21,8 +21,8 @@ const stamp = d => new Date(d).toLocaleString("en-GB", { day: "2-digit", month: 
 function jobEmbed(job, ctx = {}) {
     const st = STAGE[job.status] || STAGE.open;
     let d = `${label("Order ID")} #${job.id}\n`;
-    d += `${label("Customer")} @${ctx.customerName || job.customer_id}\n`;
-    if (job.worker_id) d += `${label("Worker")} @${ctx.workerName || job.worker_id}\n`;
+    d += `${label("Customer")} <@${job.customer_id}>\n`;
+    if (job.worker_id) d += `${label("Worker")} <@${job.worker_id}>\n`;
     d += `${label("Price")} ${fmt(job.price_cents)}\n`;
     d += `${label("Deposit")} ${job.deposit_cents > 0 ? fmt(job.deposit_cents) : "None"}\n`;
     if (job.status === "completed" || job.status === "claimed") {
@@ -51,7 +51,10 @@ const claimedRow = (jobId, workerName) => new ActionRowBuilder().addComponents(
 async function jobMessage(client, job, guild) {
     const name = async id => {
         if (!id) return null;
-        try { return (await client.users.fetch(id)).username; } catch (e) { return null; }
+        try {
+            const m = guild && await guild.members.fetch(id).catch(() => null);
+            return m?.displayName || (await client.users.fetch(id)).displayName || null;
+        } catch (e) { return null; }
     };
     const customerName = await name(job.customer_id);
     const workerName = await name(job.worker_id);

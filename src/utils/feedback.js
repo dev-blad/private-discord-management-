@@ -57,7 +57,7 @@ async function onModal(interaction, jobId, rating) {
             const header = await config.get("pricing_header_image", process.env.PRICING_HEADER_IMAGE || "");
             const e = new EmbedBuilder().setColor(rating === "positive" ? 0x2ecc71 : 0xe74c3c).setTitle("Customer Review")
                 .setDescription(
-                    `\`User      :\` ${anonymous ? "Anonymous" : `@${interaction.user.username}`}\n` +
+                    `\`User      :\` ${anonymous ? "Anonymous" : `<@${interaction.user.id}>`}\n` +
                     `\`Rating    :\` ${rating === "positive" ? "👍 Positive" : "👎 Negative"}\n` +
                     `\`Order     :\` #${job.id}\n` +
                     `\`Timestamp :\` <t:${Math.floor(Date.now() / 1000)}:f>\n\n` +
