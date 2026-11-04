@@ -6,7 +6,7 @@ Postgres is the source of truth; every money movement is an immutable ledger row
 ## Money model
 - All amounts are stored as integer **USD cents**.
 - Each user has `balance` (prepaid, spendable on jobs) and `earnings` (withdrawable by workers).
-- `/job create` escrows the price from the customer's balance. `/job complete` credits the worker `worker_pct`% (config, default 80) to earnings; the rest is house profit. `/job cancel` refunds.
+- `/create_order` escrows the price from the customer's balance and posts the job. `/finish_order` credits the worker `worker_pct`% (config, default 80) to earnings; the rest is house profit. `/job cancel` refunds.
 - `/claimearnings` holds the funds, staff Approve → send crypto → **Mark as paid** with the tx reference. Reject returns the money.
 - The `ledger` table is append-only (enforced by a trigger). Totals can always be reconciled from it.
 
@@ -15,7 +15,7 @@ Postgres is the source of truth; every money movement is an immutable ledger row
 |---|---|---|
 | `/wallet check|history` | anyone (own) / staff (others) | balance, earnings, lifetime spend |
 | `/wallet add|remove` | staff | adjust a customer balance |
-| `/job create|complete|cancel` | staff | job lifecycle |
+| `/create_order`, `/finish_order`, `/job cancel|info|list` | staff | job lifecycle |
 | `/job info|list` | anyone | view jobs |
 | Claim button on job board | boosters | atomic, first come first served |
 | `/payout address|view` | boosters | where earnings are sent |
