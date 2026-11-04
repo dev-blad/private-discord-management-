@@ -586,6 +586,27 @@ try {
         assert.ok(m.embeds[0].data.footer.text.includes("Wizards"));
     });
 
+    await test("/config: nice list, autocomplete, validation", async () => {
+        const cfgCmd = require("../src/commands/config");
+        const admin = { roles: { cache: { has: () => true } }, permissions: { has: () => true } };
+        const run = (sub, opts) => new Promise(async (res, rej) => {
+            const i = { member: admin, guild: { name: "G" }, options: { getSubcommand: () => sub, getString: n => opts[n] },
+                reply: async m => res(m) };
+            try { await cfgCmd.execute(i); } catch (e) { res({ error: e.message }); }
+        });
+        await run("set", { key: "worker_pct", value: "75" });
+        const list = await run("list", {});
+        const d = list.embeds[0].data.description;
+        assert.ok(d.includes("**Channels**") && d.includes("Worker cut") && d.includes("75%") && d.includes("*not set*"));
+        assert.ok((await run("set", { key: "worker_pct", value: "abc" })).error.includes("number"));
+        assert.ok((await run("set", { key: "claim_channel_id", value: "nope" })).error.includes("ID"));
+        let hits;
+        await cfgCmd.autocomplete({ member: admin, options: { getFocused: () => "work" }, respond: async h => { hits = h; } });
+        assert.ok(hits.some(h => h.value === "worker_pct"));
+        await cfgCmd.autocomplete({ member: admin, options: { getFocused: () => "" }, respond: async h => { hits = h; } });
+        assert.equal(hits.length, 25);
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();
