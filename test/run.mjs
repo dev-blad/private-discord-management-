@@ -287,6 +287,8 @@ try {
         await board.postNewJob(client, job, mkChannel("FALLBACK"));
         assert.equal(sent[0].ch, "C1");
         assert.ok(sent[0].m.components.length === 1);
+        assert.equal(sent[1].ch, "T");                 // customer's copy in the ticket
+        assert.equal(sent[1].m.components.length, 0);
 
         const claimed = await jobs.claimJob({ jobId: job.id, workerId: W });
         await board.moveBoard(client, claimed);

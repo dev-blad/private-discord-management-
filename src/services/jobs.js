@@ -27,6 +27,10 @@ async function setBoardMessage(jobId, channelId, messageId) {
     await query("UPDATE jobs SET board_channel_id=$2, board_message_id=$3 WHERE id=$1", [jobId, channelId, messageId]);
 }
 
+async function setTicketMessage(jobId, messageId) {
+    await query("UPDATE jobs SET ticket_message_id=$2 WHERE id=$1", [jobId, messageId]);
+}
+
 /** Atomic claim: only succeeds if the job is still open. */
 async function claimJob({ jobId, workerId }) {
     return withTx(async c => {
@@ -98,4 +102,4 @@ async function listJobs({ status = null, workerId = null, limit = 15 } = {}) {
     return rows;
 }
 
-module.exports = { createJob, setBoardMessage, claimJob, completeJob, cancelJob, getJob, listJobs };
+module.exports = { createJob, setBoardMessage, setTicketMessage, claimJob, completeJob, cancelJob, getJob, listJobs };

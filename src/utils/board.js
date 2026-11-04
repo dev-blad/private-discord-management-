@@ -26,6 +26,33 @@ async function postNewJob(client, job, fallbackChannel) {
     const channel = id ? await client.channels.fetch(id) : fallbackChannel;
     const msg = await channel.send(await jobMessage(client, job, channel.guild));
     await jobs.setBoardMessage(job.id, channel.id, msg.id);
+    await postTicketCopy(client, job, channel.id);
+}
+
+/** Customer's copy of the card, in the ticket. Same look, no button, no ping. */
+async function ticketPayload(client, job, guild) {
+    const m = await jobMessage(client, job, guild);
+    return { content: "", embeds: m.embeds, components: [] };
+}
+
+async function postTicketCopy(client, job, claimChannelId) {
+    if (!job.channel_id || job.channel_id === claimChannelId) return;
+    try {
+        const ch = await client.channels.fetch(job.channel_id);
+        const msg = await ch.send(await ticketPayload(client, job, ch.guild));
+        await jobs.setTicketMessage(job.id, msg.id);
+    } catch (e) {
+        console.error(`[board] couldn't post job #${job.id} to its ticket:`, e.message);
+    }
+}
+
+async function updateTicketCopy(client, job) {
+    if (!job.channel_id || !job.ticket_message_id || job.channel_id === job.board_channel_id) return;
+    try {
+        const ch = await client.channels.fetch(job.channel_id);
+        const msg = await ch.messages.fetch(job.ticket_message_id);
+        await msg.edit(await ticketPayload(client, job, ch.guild));
+    } catch (e) { /* ticket closed or message deleted */ }
 }
 
 /**
@@ -34,6 +61,7 @@ async function postNewJob(client, job, fallbackChannel) {
  * the same channel, edit it in place. Best effort: money is already settled.
  */
 async function moveBoard(client, job) {
+    await updateTicketCopy(client, job);
     try {
         const targetId = await channelIdFor(job.status);
         const sameSpot = !targetId || targetId === job.board_channel_id;
