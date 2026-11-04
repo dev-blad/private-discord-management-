@@ -98,6 +98,7 @@ module.exports = {
             }
             if (interaction.isStringSelectMenu()) {
                 if (interaction.customId.startsWith("pm:")) return await require("../utils/pricingMenu").handleSelect(interaction);
+                if (interaction.customId.startsWith("loc_send:")) return await require("../commands/send_location").onSelect(interaction);
                 if (interaction.customId.startsWith("fb:")) return await require("../utils/feedback").onSelect(interaction, Number(interaction.customId.split(":")[1]));
                 return;
             }
