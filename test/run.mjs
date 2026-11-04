@@ -630,28 +630,29 @@ try {
         assert.ok((await db.query("SELECT count(*)::int n FROM audit_log WHERE action='details.view'")).rows[0].n >= 1);
     });
 
-    await test("saved locations: save, replace, send as a card, remove", async () => {
+    await test("mule locations: shared, replace by RSN, send as a card, remove", async () => {
         const loc = require("../src/services/locations");
         const png = Buffer.from("89504e470d0a1a0a", "hex");
         await loc.save({ discordId: "lw1", rsn: "Nazzaa", world: "308", location: "GE", image: png, imageType: "image/png" });
-        await loc.save({ discordId: "lw1", rsn: "nazzaa", world: "327", location: "Varrock", image: png, imageType: "image/png" });
-        await loc.save({ discordId: "lw2", rsn: "Nazzaa", world: "1", location: "x", image: png, imageType: "image/png" });
-        const list = await loc.list("lw1");
-        assert.equal(list.length, 1); assert.equal(list[0].world, "327");
-        await rejects(loc.get("lw2", list[0].id), "doesn't exist");
+        await loc.save({ discordId: "lw2", rsn: "nazzaa", world: "327", location: "Varrock", image: png, imageType: "image/png" });
+        await loc.save({ discordId: "lw2", rsn: "Ruzzl3k", world: "308", location: "GE", image: png, imageType: "image/png" });
+        const list = await loc.list();
+        assert.equal(list.length, 2);
+        const n = list.find(l => l.rsn.toLowerCase() === "nazzaa");
+        assert.equal(n.world, "327");
         const sendCmd = require("../src/commands/send_location");
         let sent, updated;
         await sendCmd.onSelect({
-            customId: "loc_send:lw1", user: { id: "lw1" }, values: [String(list[0].id)],
+            customId: "loc_send:staff1", user: { id: "staff1" }, values: [String(n.id)],
             guild: { name: "G", iconURL: () => "http://i" },
             channel: { send: async m => { sent = m; } }, update: async m => { updated = m; }
         });
         const d = sent.embeds[0].data.description;
-        assert.ok(d.includes("<@lw1>") && d.includes("327") && d.includes("Varrock") && sent.files.length === 1);
+        assert.ok(d.includes("<@staff1>") && d.includes("327") && d.includes("Varrock") && d.includes("payment") && sent.files.length === 1);
         assert.ok(updated.components.length === 0);
-        await rejects(sendCmd.onSelect({ customId: "loc_send:lw1", user: { id: "other" }, values: ["1"] }), "isn't yours");
-        await loc.remove("lw1", "NAZZAA");
-        await rejects(loc.remove("lw1", "Nazzaa"), "no saved location");
+        await rejects(sendCmd.onSelect({ customId: "loc_send:staff1", user: { id: "other" }, values: ["1"] }), "isn't yours");
+        await loc.remove("NAZZAA");
+        await rejects(loc.remove("Nazzaa"), "no saved location");
     });
 
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
