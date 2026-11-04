@@ -10,7 +10,7 @@ module.exports = {
 
     async execute(interaction) {
         requireSupport(interaction.member);
-        if (!chain.configured()) throw new UserError("No payout wallet is set up yet. Add `PAYOUT_PRIVATE_KEY` on Railway.");
+        if (!chain.configured()) throw new UserError("No payout wallet is set up yet. Add `PAYOUT_PRIVATE_KEY` (or `PAYOUT_XPRV`) on Railway.");
         await interaction.deferReply({ ephemeral: true });
         const s = await autopay.settings();
 

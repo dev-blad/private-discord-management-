@@ -15,8 +15,15 @@ module.exports = {
                 { name: "USDT (Arbitrum) - automatic", value: "USDT-ARBITRUM" }, { name: "USDT (TRC20) - manual", value: "USDT-TRC20" }, { name: "Litecoin - manual", value: "LTC" },
                 { name: "Bitcoin - manual", value: "BTC" }))
             .addStringOption(o => o.setName("address").setDescription("Your wallet address").setRequired(true).setMinLength(10).setMaxLength(120)))
-        .addSubcommand(s => s.setName("view").setDescription("Show your saved payout address"))
+        .addSubcommand(s => s.setName("view").setDescription("Show your saved payout addresses"))
+        .addSubcommand(s => s.setName("remove").setDescription("Delete one of your saved addresses")
+            .addStringOption(o => o.setName("method").setDescription("Which one").setRequired(true).setAutocomplete(true)))
         .addSubcommand(s => s.setName("pending").setDescription("List payouts awaiting action (staff)")),
+
+    async autocomplete(interaction) {
+        const list = await wallets.listPayoutAddresses(interaction.user.id);
+        return interaction.respond(list.map(a => ({ name: `${a.method} · ${a.address.slice(0, 6)}…${a.address.slice(-4)}`.slice(0, 100), value: a.method })));
+    },
 
     async execute(interaction) {
         const sub = interaction.options.getSubcommand();
@@ -36,10 +43,18 @@ module.exports = {
                 content: `✅ Saved: **${method}** \`${address}\`\nDouble-check it — payouts go exactly here.` + (require("../services/chain").supports(method) ? `\nMake sure your wallet or exchange accepts **${require("../services/chain").asset(method).label}** deposits. Sending to the wrong network can't be reversed.` : ""), ephemeral: true });
         }
         if (sub === "view") {
-            const p = await wallets.getProfile(interaction.user.id);
+            const list = await wallets.listPayoutAddresses(interaction.user.id);
             return interaction.reply({
-                content: p?.payout_address ? `**${p.payout_method}** \`${p.payout_address}\`` : "No payout address set. Use `/payout address`.",
+                content: list.length
+                    ? "**Your payout addresses** (newest is used unless you pick one in `/claimearnings`)\n" + list.map(a => `• **${a.method}** \`${a.address}\``).join("\n")
+                    : "No payout address set. Use `/payout address`.",
                 ephemeral: true });
+        }
+        if (sub === "remove") {
+            requireBooster(interaction.member);
+            const method = interaction.options.getString("method");
+            await wallets.removePayoutAddress(interaction.user.id, method);
+            return interaction.reply({ content: `🗑️ Removed your **${method}** address.`, ephemeral: true });
         }
         requireSupport(interaction.member);
         const list = await payouts.listPending();

@@ -44,7 +44,7 @@ Account sales use `/create_listing`, `/send_account` and friends (stored in Post
 ## Automatic payouts (stablecoins on EVM chains)
 Supported: USDT or USDC on Ethereum, USDC on Base, USDT on Polygon, USDT on Arbitrum. One wallet key works on all of them (same 0x address).
 1. In OneKey create a NEW wallet used only for payouts. Send it a few days of the token plus a little gas (ETH, or POL on Polygon) on each network you use. Ethereum fees are higher; the bot waits when gas is above `max_gas_gwei_1` (default 20).
-2. Export that wallet's private key and set it on Railway as `PAYOUT_PRIVATE_KEY`. Do not use your main wallet. Optional: `ETH_RPC_URL`, `BASE_RPC_URL`, `POLYGON_RPC_URL`, `ARBITRUM_RPC_URL`.
+2. Set the payout key on Railway: either `PAYOUT_PRIVATE_KEY` (a 0x key) or `PAYOUT_XPRV` (an extended private key such as OneKey exports; the key at `PAYOUT_XPRV_PATH`, default `0/0`, is used. `/pot` shows the address to fund). Do not use your main wallet. Optional: `ETH_RPC_URL`, `BASE_RPC_URL`, `POLYGON_RPC_URL`, `ARBITRUM_RPC_URL`.
 3. Workers set `/payout address` with an "automatic" method.
 4. `/pot` shows balances. `/autopayout enable` turns it on; `/autopayout limit` sets the per-payout, per-worker and daily caps. `/autopayout disable` stops it instantly.
 Payouts above the limit, BTC/LTC/TRC20, and anything that fails wait for staff (Approve & send / Send / Mark as paid).

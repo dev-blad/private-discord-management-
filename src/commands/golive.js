@@ -37,7 +37,7 @@ module.exports = {
             `${tick(partners)} **Profit partners** ${partners ? "set" : "→ `/profit partners`"}`,
             `${tick(!roleEnv.length)} **Role variables** ${roleEnv.length ? `missing on Railway: ${roleEnv.join(", ")}` : "set"}`,
             `${tick(Boolean(process.env.ACCOUNT_ENC_KEY))} **ACCOUNT_ENC_KEY** ${process.env.ACCOUNT_ENC_KEY ? "set" : "add on Railway (needed for account sales and /request_details)"}`,
-            `${tick(chain.configured())} **Payout wallet key** ${chain.configured() ? "set" : "add PAYOUT_PRIVATE_KEY on Railway when the wallets are ready"}`,
+            `${tick(chain.configured())} **Payout wallet key** ${chain.configured() ? "set" : "add PAYOUT_PRIVATE_KEY (or PAYOUT_XPRV) on Railway when the wallets are ready"}`,
             `${tick((await config.get("auto_payout_enabled", "false")) === "true")} **Auto payouts** → \`/pot\`, test payout, then \`/autopayout enable\``,
             `${tick(await has("sythe_vouch_url"))} **Sythe vouch link** → \`/config set\` sythe_vouch_url`,
             `${tick(migrated > 0)} **Wallets migrated** ${migrated} so far`

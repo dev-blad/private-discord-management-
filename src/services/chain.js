@@ -25,14 +25,23 @@ const cache = new Map();
 
 const supports = method => Object.prototype.hasOwnProperty.call(ASSETS, method);
 const asset = method => ASSETS[method];
-const configured = () => Boolean(override || process.env.PAYOUT_PRIVATE_KEY);
+const configured = () => Boolean(override || process.env.PAYOUT_PRIVATE_KEY || process.env.PAYOUT_XPRV);
 const isValidAddress = a => /^0x[0-9a-fA-F]{40}$/.test(String(a || "")) && ethers.isAddress(a);
 const centsToUnits = (cents, decimals = 6) => BigInt(cents) * 10n ** BigInt(decimals - 2);
 const unitsToCents = (units, decimals = 6) => Number(BigInt(units) / 10n ** BigInt(decimals - 2));
 
 class GasTooHigh extends Error {}
 
+/**
+ * The signing key. Either a plain 0x key (PAYOUT_PRIVATE_KEY), or an extended private key
+ * (PAYOUT_XPRV, e.g. exported from OneKey) from which the key at PAYOUT_XPRV_PATH (default "0/0") is derived.
+ */
 function walletKey() {
+    const xprv = String(process.env.PAYOUT_XPRV || "").trim();
+    if (xprv && !process.env.PAYOUT_PRIVATE_KEY) {
+        const path = String(process.env.PAYOUT_XPRV_PATH || "0/0").trim();
+        return ethers.HDNodeWallet.fromExtendedKey(xprv).derivePath(path).privateKey;
+    }
     const key = String(process.env.PAYOUT_PRIVATE_KEY || "").trim();
     return key.startsWith("0x") ? key : `0x${key}`;
 }
@@ -97,7 +106,7 @@ function serial(fn) {
 function address() {
     try {
         if (override) { const s = typeof override === "function" ? override("USDC-BASE") : override; return s.address || null; }
-        return process.env.PAYOUT_PRIVATE_KEY ? new ethers.Wallet(walletKey()).address : null;
+        return (process.env.PAYOUT_PRIVATE_KEY || process.env.PAYOUT_XPRV) ? new ethers.Wallet(walletKey()).address : null;
     } catch (e) { return null; }
 }
 
@@ -106,4 +115,4 @@ const explorer = (method, hash) => {
     return base + hash;
 };
 
-module.exports = { ASSETS, GasTooHigh, supports, asset, configured, isValidAddress, centsToUnits, unitsToCents, sender, setSender, serial, address, explorer };
+module.exports = { walletKey, ASSETS, GasTooHigh, supports, asset, configured, isValidAddress, centsToUnits, unitsToCents, sender, setSender, serial, address, explorer };

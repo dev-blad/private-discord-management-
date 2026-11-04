@@ -10,7 +10,15 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName("claimearnings")
         .setDescription("Request a payout of your earnings")
-        .addNumberOption(o => o.setName("amount").setDescription("USD to withdraw (leave blank for everything)").setMinValue(0.01).setMaxValue(1000000)),
+        .addNumberOption(o => o.setName("amount").setDescription("USD to withdraw (leave blank for everything)").setMinValue(0.01).setMaxValue(1000000))
+        .addStringOption(o => o.setName("method").setDescription("Which saved address to be paid to (default: the one you saved last)").setAutocomplete(true)),
+
+    async autocomplete(interaction) {
+        const list = await require("../services/wallets").listPayoutAddresses(interaction.user.id);
+        const q = interaction.options.getFocused().toLowerCase();
+        return interaction.respond(list.filter(a => a.method.toLowerCase().includes(q))
+            .map(a => ({ name: `${a.method} · ${a.address.slice(0, 6)}…${a.address.slice(-4)}`.slice(0, 100), value: a.method })));
+    },
 
     async execute(interaction) {
         requireBooster(interaction.member);
@@ -18,7 +26,8 @@ module.exports = {
         const raw = interaction.options.getNumber("amount");
         const payout = await payouts.requestPayout({
             discordId: interaction.user.id,
-            cents: raw == null ? null : toCents(raw)
+            cents: raw == null ? null : toCents(raw),
+            method: interaction.options.getString("method")
         });
 
         let posted = true;

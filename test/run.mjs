@@ -722,6 +722,41 @@ try {
         assert.ok(parseWalletCsv("a,b\n1,2", 0.18).errors[0].includes("discord_id"));
     });
 
+    await test("payout wallet from xprv; several saved addresses, choose at cash-out", async () => {
+        const { ethers } = require("ethers");
+        const chainSvc = require("../src/services/chain");
+        const root = ethers.HDNodeWallet.fromPhrase("test test test test test test test test test test test junk", "", "m/44'/60'/0'");
+        const expected = ethers.HDNodeWallet.fromPhrase("test test test test test test test test test test test junk").address; // m/44'/60'/0'/0/0
+        const saved = { k: process.env.PAYOUT_PRIVATE_KEY, x: process.env.PAYOUT_XPRV };
+        try {
+            delete process.env.PAYOUT_PRIVATE_KEY; chainSvc.setSender(null);
+            process.env.PAYOUT_XPRV = root.extendedKey;
+            assert.equal(chainSvc.address(), expected);
+            assert.ok(chainSvc.configured());
+            process.env.PAYOUT_XPRV_PATH = "0/1";
+            assert.notEqual(chainSvc.address(), expected);
+        } finally {
+            delete process.env.PAYOUT_XPRV_PATH;
+            if (saved.k === undefined) delete process.env.PAYOUT_PRIVATE_KEY; else process.env.PAYOUT_PRIVATE_KEY = saved.k;
+            if (saved.x === undefined) delete process.env.PAYOUT_XPRV; else process.env.PAYOUT_XPRV = saved.x;
+        }
+
+        const U2 = "700000000000000001";
+        await wallets.setPayoutAddress(U2, "USDT-ERC20", "0x" + "a".repeat(40));
+        await wallets.setPayoutAddress(U2, "BTC", "bc1qexample0000000000000000000000000000");
+        assert.equal((await wallets.listPayoutAddresses(U2)).length, 2);
+        await db.query("INSERT INTO wallets (discord_id, earnings_cents) VALUES ($1, 5000) ON CONFLICT (discord_id) DO UPDATE SET earnings_cents=5000", [U2]);
+        await rejects(payouts.requestPayout({ discordId: U2, cents: 1500, method: "LTC" }), "haven't saved");
+        const p1 = await payouts.requestPayout({ discordId: U2, cents: 1500, method: "USDT-ERC20" });
+        assert.equal(p1.method, "USDT-ERC20"); assert.equal(p1.address, "0x" + "a".repeat(40));
+        await db.query("UPDATE payouts SET status='rejected' WHERE id=$1", [p1.id]);
+        const p2 = await payouts.requestPayout({ discordId: U2, cents: 1500 });
+        assert.equal(p2.method, "BTC");
+        await wallets.removePayoutAddress(U2, "BTC");
+        assert.equal((await wallets.getProfile(U2)).payout_method, "USDT-ERC20");
+        await rejects(wallets.removePayoutAddress(U2, "BTC"), "don't have");
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();

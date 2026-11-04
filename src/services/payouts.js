@@ -5,11 +5,17 @@ const { audit } = require("./audit");
 const config = require("./config");
 
 /** Worker requests a payout. Funds are held (deducted) immediately so they can't be claimed twice. */
-async function requestPayout({ discordId, cents }) {
+async function requestPayout({ discordId, cents, method = null }) {
     const minUsd = Number(await config.get("min_payout_usd", "10"));
     return withTx(async c => {
-        const p = (await c.query("SELECT * FROM profiles WHERE discord_id=$1", [discordId])).rows[0];
-        if (!p || !p.payout_address) throw new UserError("Set your payout address first with `/payout address`.");
+        const saved = (await c.query("SELECT method, address FROM payout_addresses WHERE discord_id=$1 ORDER BY updated_at DESC", [discordId])).rows;
+        if (!saved.length) throw new UserError("Set your payout address first with `/payout address`.");
+        let chosen;
+        if (method) {
+            chosen = saved.find(a => a.method === method);
+            if (!chosen) throw new UserError(`You haven't saved an address for **${method}**. Add one with \`/payout address\`.`);
+        } else chosen = saved[0]; // the one saved most recently
+        const p = { payout_method: chosen.method, payout_address: chosen.address };
 
         const w = (await c.query("SELECT earnings_cents FROM wallets WHERE discord_id=$1", [discordId])).rows[0];
         const available = w ? w.earnings_cents : 0;

@@ -77,13 +77,31 @@ async function getProfile(discordId) {
     return rows[0] || null;
 }
 
+/** Save (or replace) the address for one coin/network. The most recently saved one is the default. */
 async function setPayoutAddress(discordId, method, address) {
+    await withTx(async c => {
+        await c.query(
+            `INSERT INTO payout_addresses (discord_id, method, address) VALUES ($1,$2,$3)
+             ON CONFLICT (discord_id, method) DO UPDATE SET address = EXCLUDED.address, updated_at = now()`,
+            [discordId, method, address]);
+        await c.query(
+            `INSERT INTO profiles (discord_id, payout_method, payout_address) VALUES ($1,$2,$3)
+             ON CONFLICT (discord_id) DO UPDATE SET payout_method = EXCLUDED.payout_method,
+                payout_address = EXCLUDED.payout_address, updated_at = now()`,
+            [discordId, method, address]);
+    });
+}
+
+const listPayoutAddresses = async discordId => (await query(
+    "SELECT method, address FROM payout_addresses WHERE discord_id=$1 ORDER BY updated_at DESC", [discordId])).rows;
+
+async function removePayoutAddress(discordId, method) {
+    const r = await query("DELETE FROM payout_addresses WHERE discord_id=$1 AND method=$2", [discordId, method]);
+    if (!r.rowCount) throw new UserError("You don't have an address saved for that coin.");
     await query(
-        `INSERT INTO profiles (discord_id, payout_method, payout_address) VALUES ($1,$2,$3)
-         ON CONFLICT (discord_id) DO UPDATE SET payout_method = EXCLUDED.payout_method,
-            payout_address = EXCLUDED.payout_address, updated_at = now()`,
-        [discordId, method, address]
-    );
+        `UPDATE profiles SET (payout_method, payout_address) =
+            (SELECT method, address FROM payout_addresses WHERE discord_id=$1 ORDER BY updated_at DESC LIMIT 1)
+         WHERE discord_id=$1`, [discordId]);
 }
 
 /**
@@ -109,4 +127,4 @@ async function getWalletTx(c, discordId) {
     return { balance: w.balance_cents, earnings: w.earnings_cents, spent: w.spent_cents };
 }
 
-module.exports = { migrate, applyLedger, getWallet, deposit, charge, history, getProfile, setPayoutAddress };
+module.exports = { listPayoutAddresses, removePayoutAddress, migrate, applyLedger, getWallet, deposit, charge, history, getProfile, setPayoutAddress };

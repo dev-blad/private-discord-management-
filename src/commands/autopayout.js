@@ -32,7 +32,7 @@ module.exports = {
         const reply = content => interaction.reply({ content, ephemeral: true });
 
         if (sub === "enable") {
-            if (!chain.configured()) throw new UserError("Add `PAYOUT_PRIVATE_KEY` on Railway first.");
+            if (!chain.configured()) throw new UserError("Add `PAYOUT_PRIVATE_KEY` (or `PAYOUT_XPRV`) on Railway first.");
             await config.set("auto_payout_enabled", "true");
             await audit({ query }, interaction.user.id, "autopayout.enable", "config", "auto_payout_enabled");
             return reply("✅ Automatic payouts are **on**. Use `/autopayout status` to check the limits.");
