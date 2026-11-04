@@ -681,6 +681,30 @@ try {
         assert.ok((await run("remove", { role: "r-nov" })).error.includes("isn't a tier"));
     });
 
+    await test("wallet migrate: balance, earnings, GP spend to USD, once only; /golive runs", async () => {
+        await wallets.migrate({ discordId: "mig1", balanceCents: 5000, earningsCents: 1200, spentCents: 3600, actorId: "1" });
+        const w = await wallets.getWallet("mig1");
+        assert.equal(w.balance, 5000); assert.equal(w.earnings, 1200); assert.equal(w.spent, 3600);
+        await rejects(wallets.migrate({ discordId: "mig1", balanceCents: 1, actorId: "1" }), "already been migrated");
+        const walletsCmd = require("../src/commands/wallets");
+        await config.set("gp_usd_rate", "0.18");
+        const out = await new Promise(async res => {
+            const o = { user: { id: "mig2", username: "x" }, spent_gp: 1000 };
+            const i = { member: { roles: { cache: { has: () => true } }, permissions: { has: () => true } }, user: { id: "1" }, guild: null,
+                options: { getSubcommand: () => "migrate", getUser: () => o.user, getNumber: n => o[n] ?? null, getString: () => null },
+                reply: async m => res(m) };
+            try { await walletsCmd.execute(i); } catch (e) { res({ error: e.message }); }
+        });
+        assert.ok(out.content && out.content.includes("$180.00"), JSON.stringify(out));
+        assert.equal((await wallets.getWallet("mig2")).spent, 18000);
+        const golive = require("../src/commands/golive");
+        const g = await new Promise(async res => {
+            const i = { member: { roles: { cache: { has: () => true } }, permissions: { has: () => true } }, guild: null, reply: async m => res(m) };
+            try { await golive.execute(i); } catch (e) { res({ error: e.message }); }
+        });
+        assert.ok(g.embeds && g.embeds[0].data.description.includes("Go-live") === false && g.embeds[0].data.description.includes("/tier set"));
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();

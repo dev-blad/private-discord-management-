@@ -86,4 +86,27 @@ async function setPayoutAddress(discordId, method, address) {
     );
 }
 
-module.exports = { applyLedger, getWallet, deposit, charge, history, getProfile, setPayoutAddress };
+/**
+ * One-time move of a customer/worker's old balances into this system.
+ * Sets lifetime spend directly (so spend tiers carry over) and refuses to run twice for the same person.
+ */
+async function migrate({ discordId, balanceCents = 0, earningsCents = 0, spentCents = 0, actorId }) {
+    return withTx(async c => {
+        const done = await c.query("SELECT 1 FROM audit_log WHERE action='wallet.migrate' AND entity_id=$1 LIMIT 1", [discordId]);
+        if (done.rows.length) throw new UserError("That person has already been migrated. Use `/wallet add` or `/wallet remove` to adjust.");
+        await c.query("INSERT INTO wallets (discord_id) VALUES ($1) ON CONFLICT DO NOTHING", [discordId]);
+        if (balanceCents > 0) await applyLedger(c, { discordId, bucket: "balance", delta: balanceCents, kind: "migration", actorId, note: "Migrated from old bot", source: "migration" });
+        if (earningsCents > 0) await applyLedger(c, { discordId, bucket: "earnings", delta: earningsCents, kind: "migration", actorId, note: "Migrated from old bot" });
+        await c.query("UPDATE wallets SET spent_cents=$2 WHERE discord_id=$1", [discordId, spentCents]);
+        await c.query("INSERT INTO audit_log (actor_id, action, entity, entity_id, data) VALUES ($1,'wallet.migrate','wallet',$2,$3)",
+            [actorId, discordId, { balanceCents, earningsCents, spentCents }]);
+        return getWalletTx(c, discordId);
+    });
+}
+
+async function getWalletTx(c, discordId) {
+    const w = (await c.query("SELECT * FROM wallets WHERE discord_id=$1", [discordId])).rows[0];
+    return { balance: w.balance_cents, earnings: w.earnings_cents, spent: w.spent_cents };
+}
+
+module.exports = { migrate, applyLedger, getWallet, deposit, charge, history, getProfile, setPayoutAddress };
