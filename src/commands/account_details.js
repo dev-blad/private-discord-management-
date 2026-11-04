@@ -11,10 +11,15 @@ module.exports = {
     async execute(interaction) {
         requireSupport(interaction.member);
         const a = await accounts.get(interaction.options.getString("id"));
-        const input = new TextInputBuilder().setCustomId("details").setLabel(`Delivery details for ${a.id}`)
-            .setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1500)
-            .setPlaceholder("Username / password / bank PIN / recovery steps. Sent to the buyer only.");
+        const field = (id, label, required, style = TextInputStyle.Short, max = 200) =>
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label)
+                .setStyle(style).setRequired(required).setMaxLength(max));
         return interaction.showModal(new ModalBuilder().setCustomId(`acct_details:${a.id}`)
-            .setTitle("Account delivery details").addComponents(new ActionRowBuilder().addComponents(input)));
+            .setTitle(`Delivery details for ${a.id}`).addComponents(
+                field("login", "Login Email / Username", true),
+                field("password", "Password", true),
+                field("recovery", "Recovery Details (blank = N/A)", false),
+                field("pin", "Bank Pin (blank = N/A)", false, TextInputStyle.Short, 20),
+                field("notes", "Notes (blank = none)", false, TextInputStyle.Paragraph, 500)));
     }
 };

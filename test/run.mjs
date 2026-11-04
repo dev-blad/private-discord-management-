@@ -572,6 +572,20 @@ try {
         assert.equal((await jobs.claimJob({ jobId: job.id, workerId: "dw1" })).status, "claimed");
     });
 
+    await test("account delivery DM layout", async () => {
+        const { deliveryMessage } = require("../src/utils/accountCard");
+        const config = require("../src/services/config");
+        await config.set("sythe_vouch_url", "https://sythe.org/threads/x");
+        await config.set("vouch_channel_id", "999");
+        const m = await deliveryMessage({ account: { id: "T001" }, details: JSON.stringify({ login: "bob", password: "pw", recovery: "", pin: "2112", notes: "" }),
+            buyerName: "Buyer", sellerName: "Blad", soldCents: 13200, guild: { name: "Wizards" } });
+        const f = Object.fromEntries(m.embeds[0].data.fields.map(x => [x.name, x.value]));
+        assert.equal(f["💰 Price"], "$132.00"); assert.equal(f["🔑 Password"], "pw"); assert.equal(f["🪪 Recovery Details"], "N/A");
+        assert.equal(f["🔒 Bank Pin"], "2112"); assert.equal(f["👤 Seller"], "Blad");
+        assert.ok(m.content.includes("Sythe Vouch Thread") && m.content.includes("<#999>"));
+        assert.ok(m.embeds[0].data.footer.text.includes("Wizards"));
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();

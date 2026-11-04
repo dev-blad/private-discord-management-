@@ -108,7 +108,9 @@ module.exports = {
                 const [action, rawId] = interaction.customId.split(":");
                 if (action === "acct_details") {
                     requireSupport(interaction.member);
-                    const a = await require("../services/accountsales").setDetails(rawId, interaction.fields.getTextInputValue("details").trim());
+                    const f = id => interaction.fields.getTextInputValue(id).trim();
+                    const a = await require("../services/accountsales").setDetails(rawId,
+                        JSON.stringify({ login: f("login"), password: f("password"), recovery: f("recovery"), pin: f("pin"), notes: f("notes") }));
                     return interaction.reply({ content: `🔐 Saved the delivery details for **${a.id}**. They're stored encrypted and only sent with \`/send_account\`.`, ephemeral: true });
                 }
                 if (action === "payout_paidmodal") return await onPayoutPaidModal(interaction, Number(rawId));

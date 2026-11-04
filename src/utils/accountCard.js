@@ -54,4 +54,30 @@ async function refreshListing(client, a) {
     }
 }
 
-module.exports = { accountEmbed, postListing, refreshListing, gpPrice };
+/** The DM the buyer gets: login details in the same layout as the old bot. */
+async function deliveryMessage({ account, details, buyerName, sellerName, soldCents, guild }) {
+    let d;
+    try { d = JSON.parse(details); } catch (e) { d = { login: "", password: "", notes: details }; }
+    const v = x => (x && String(x).trim()) || "N/A";
+    const sythe = await config.get("sythe_vouch_url", "");
+    const vouchCh = await config.get("vouch_channel_id", "");
+    const lines = ["⭐ **Please leave a vouch!**"];
+    if (sythe) lines.push(`• [Sythe Vouch Thread](${sythe})`);
+    if (vouchCh) lines.push(`• Or vouch in <#${vouchCh}>`);
+
+    const embed = new EmbedBuilder().setColor(0x2ecc71).setTitle("🎉 Account Purchase Confirmation")
+        .setDescription(`Hi ${buyerName}, thanks for your purchase! Here's your account information:`)
+        .addFields(
+            { name: "🆔 Listing ID", value: account.id },
+            { name: "💰 Price", value: fmt(Number(soldCents)) },
+            { name: "👤 Seller", value: sellerName },
+            { name: "📧 Login Email / Username", value: v(d.login) },
+            { name: "🔑 Password", value: v(d.password) },
+            { name: "🪪 Recovery Details", value: v(d.recovery) },
+            { name: "🔒 Bank Pin", value: v(d.pin) },
+            { name: "📝 Notes", value: v(d.notes) })
+        .setFooter({ text: `Thank you for choosing ${guild?.name || "us"} • Please leave feedback below!` });
+    return { content: lines.length > 1 ? lines.join("\n") : undefined, embeds: [embed] };
+}
+
+module.exports = { deliveryMessage, accountEmbed, postListing, refreshListing, gpPrice };

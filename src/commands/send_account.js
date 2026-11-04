@@ -1,8 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const accounts = require("../services/accountsales");
 const { toCents, fmt, UserError } = require("../utils/money");
 const { requireSupport } = require("../utils/perms");
-const { refreshListing } = require("../utils/accountCard");
+const { refreshListing, deliveryMessage } = require("../utils/accountCard");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -24,12 +24,15 @@ module.exports = {
         const soldCents = paid === null ? Number(a0.price_cents) : toCents(paid);
         const { account, sale } = await accounts.recordSale({ id: a0.id, buyerId: buyer.id, soldCents, soldBy: interaction.user.id });
 
+            const sellerMember = await interaction.guild.members.fetch(account.creator_id).catch(() => null);
+        const buyerMember = await interaction.guild.members.fetch(buyer.id).catch(() => null);
+        const dm = await deliveryMessage({
+            account, details, soldCents, guild: interaction.guild,
+            buyerName: buyerMember?.displayName || buyer.username,
+            sellerName: sellerMember?.displayName || "Staff"
+        });
         try {
-            const dm = new EmbedBuilder().setColor(0x2ecc71).setTitle(`🧾 Your account — ${account.title}`)
-                .setDescription(`Thanks for your purchase! Here are your details for **${account.id}**.\n\n\`\`\`${details}\`\`\`\n` +
-                    "Change the password and recovery details straight away and keep this message private.")
-                .setTimestamp();
-            await buyer.send({ embeds: [dm] });
+            await buyer.send(dm);
         } catch (e) {
             await accounts.undoSale(sale.id);
             throw new UserError(`I couldn't DM ${buyer.username} (their DMs are closed), so nothing was recorded. Ask them to allow DMs from this server and run it again.`);
