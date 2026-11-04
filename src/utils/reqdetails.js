@@ -3,17 +3,16 @@ const {
 } = require("discord.js");
 const svc = require("../services/reqdetails");
 const { UserError } = require("./money");
-const { isAdmin } = require("./perms");
 
 const footer = guild => ({ text: guild?.name || " ", iconURL: guild?.iconURL?.() || undefined });
 
 function requestMessage(r, { done = false, guild, requesterName } = {}) {
     const embed = new EmbedBuilder().setColor(0x3498db).setTitle("📝 Account Details Request")
         .setDescription(
-            "Someone has requested account details. Click the button below to submit the account information.\n\n" +
+            "Your worker has requested account details. Click the button below to submit the account information.\n\n" +
             "**Required Information**\n• Client (Runelite or Launcher)\n• Username\n• Password\n• PIN\n\n" +
-            "🔒 Only the worker on your order can see these. They're stored encrypted, never shown in the channel.")
-        .setFooter({ text: `Requested by ${requesterName || "staff"}${guild?.name ? " | " + guild.name : ""}` }).setTimestamp();
+            "🔒 Only the person who requested these details can see them. They're stored encrypted and never shown in the channel.")
+        .setFooter({ text: `Requested by ${requesterName || "worker"}${guild?.name ? " | " + guild.name : ""}` }).setTimestamp();
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`reqdet_submit:${r.id}`)
         .setLabel(done ? "Submitted" : "Submit Details").setEmoji(done ? "✅" : "📝")
         .setStyle(done ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(done));
@@ -53,7 +52,7 @@ async function onModal(interaction, id) {
 }
 
 async function onView(interaction, id) {
-    const { request: r, details: d } = await svc.view(id, interaction.user, isAdmin(interaction.member));
+    const { request: r, details: d } = await svc.view(id, interaction.user);
     const spoil = x => `||${String(x).replace(/\|/g, "\\|")}||`;
     const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("📋 Account Details").setDescription(
         "Here are the submitted account details:\n\n" +

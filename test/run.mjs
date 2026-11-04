@@ -607,7 +607,7 @@ try {
         assert.equal(hits.length, 25);
     });
 
-    await test("request details: only the customer submits, only worker/requester/admin view", async () => {
+    await test("request details: only the customer submits, only the requester views", async () => {
         const rd = require("../src/services/reqdetails");
         process.env.ACCOUNT_ENC_KEY = "test-key-test-key-test-key";
         const { job } = await jobs.createJob({ customerId: "rc1", priceCents: 0 + 100, depositCents: 0, description: "x", imageUrl: null, channelId: "chan-rd", createdBy: "1" }).catch(async () => {
@@ -617,17 +617,17 @@ try {
         await db.query("UPDATE jobs SET channel_id='chan-rd' WHERE id=$1", [job.id]);
         await jobs.claimJob({ jobId: job.id, workerId: "rw1" });
         const r = await rd.create({ channelId: "chan-rd", requestedBy: "staff1", customerId: "rc1" });
-        await rejects(rd.view(r.id, { id: "rw1" }, false), "No details");
+        await rejects(rd.view(r.id, { id: "staff1" }), "No details");
         await rejects(rd.submit({ id: r.id, userId: "someoneelse", details: {} }), "isn't for you");
         await rd.submit({ id: r.id, userId: "rc1", details: { client: "Runelite", username: "u", password: "hunter2", pin: "1234" } });
         await rejects(rd.submit({ id: r.id, userId: "rc1", details: {} }), "already");
         const raw = (await db.query("SELECT details_enc FROM account_requests WHERE id=$1", [r.id])).rows[0].details_enc;
         assert.ok(!raw.includes("hunter2"));
-        assert.equal((await rd.view(r.id, { id: "rw1" }, false)).details.password, "hunter2");
-        assert.equal((await rd.view(r.id, { id: "staff1" }, false)).details.pin, "1234");
-        assert.equal((await rd.view(r.id, { id: "boss" }, true)).details.client, "Runelite");
-        await rejects(rd.view(r.id, { id: "othersupport" }, false), "Only the worker");
-        assert.ok((await db.query("SELECT count(*)::int n FROM audit_log WHERE action='details.view'")).rows[0].n >= 3);
+        assert.equal((await rd.view(r.id, { id: "staff1" })).details.password, "hunter2");
+        await rejects(rd.view(r.id, { id: "rw1" }), "Only the person who requested");
+        await rejects(rd.view(r.id, { id: "rc1" }), "Only the person who requested");
+        await rejects(rd.view(r.id, { id: "boss" }), "Only the person who requested");
+        assert.ok((await db.query("SELECT count(*)::int n FROM audit_log WHERE action='details.view'")).rows[0].n >= 1);
     });
 
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);

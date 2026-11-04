@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const svc = require("../services/reqdetails");
-const { requireSupport } = require("../utils/perms");
+const { requireBooster } = require("../utils/perms");
 const { UserError } = require("../utils/money");
 const { requestMessage } = require("../utils/reqdetails");
 const { query } = require("../db");
@@ -8,11 +8,11 @@ const { query } = require("../db");
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("request_details")
-        .setDescription("Ask the customer for their account login, privately for the worker (staff)")
+        .setDescription("Ask the customer for their account login, privately for you (workers)")
         .addUserOption(o => o.setName("user").setDescription("Customer (default: the customer on this ticket's order)")),
 
     async execute(interaction) {
-        requireSupport(interaction.member);
+        requireBooster(interaction.member);
         let customerId = interaction.options.getUser("user")?.id;
         if (!customerId) {
             const { rows } = await query("SELECT customer_id FROM jobs WHERE channel_id=$1 AND status IN ('open','claimed') ORDER BY id DESC LIMIT 1", [interaction.channelId]);
