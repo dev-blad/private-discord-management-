@@ -27,12 +27,13 @@ async function lifetimeEarned(userId) {
 }
 
 /** Lines for the monospace box. Pure given its inputs, so it can be tested. */
-function buildLines({ tag, isWorker, wallet, earned, rate, stats, discountText, jobRoleNames }) {
+function buildLines({ tag, isWorker, wallet, earned, rate, stats, discountText, jobRoleNames, deposit = 0 }) {
     const lines = [`\`${pad("User")}:\` ${tag}`];
 
     if (isWorker) {
         lines.push(mono("USD Balance", `$${usd(wallet.earnings)}`));
         lines.push(mono("Total Earned", `$${usd(earned)}`));
+        lines.push(mono("Deposit Paid", `$${usd(deposit)}`));
         if (wallet.balance > 0) lines.push(mono("Spending Credit", `$${usd(wallet.balance)}`));
     } else {
         const balanceGp = Math.round(wallet.balance / 100 / rate);
@@ -60,9 +61,9 @@ function buildLines({ tag, isWorker, wallet, earned, rate, stats, discountText, 
 
 /** The wallet card. Shared by !w and /wallet check. */
 async function walletEmbed({ guild, user, member }) {
-    const [wallet, stats, earned, roles, settings, tiers] = await Promise.all([
+    const [wallet, stats, earned, roles, settings, tiers, deposit] = await Promise.all([
         wallets.getWallet(user.id), jobStats(user.id), lifetimeEarned(user.id),
-        jobroles.list(), getCalcSettings(member), pricing.tiers()
+        jobroles.list(), getCalcSettings(member), pricing.tiers(), require("../services/deposits").get(user.id)
     ]);
 
     const have = id => Boolean(id && member?.roles?.cache?.has(id));
@@ -79,7 +80,7 @@ async function walletEmbed({ guild, user, member }) {
 
     const lines = buildLines({
         tag: `<@${user.id}>`, isWorker, wallet, earned, rate: settings.rate,
-        stats, discountText, jobRoleNames
+        stats, discountText, jobRoleNames, deposit
     });
 
     return new EmbedBuilder()

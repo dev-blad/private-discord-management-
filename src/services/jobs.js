@@ -1,5 +1,5 @@
 const { query, withTx } = require("../db");
-const { UserError } = require("../utils/money");
+const { UserError, fmt } = require("../utils/money");
 const { applyLedger } = require("./wallets");
 const { audit } = require("./audit");
 const config = require("./config");
@@ -35,6 +35,13 @@ async function setTicketMessage(jobId, messageId) {
 /** Atomic claim: only succeeds if the job is still open. */
 async function claimJob({ jobId, workerId }) {
     return withTx(async c => {
+        const pre = (await c.query("SELECT deposit_cents, status FROM jobs WHERE id=$1", [jobId])).rows[0];
+        if (pre && pre.status === "open" && Number(pre.deposit_cents) > 0) {
+            const held = await require("./deposits").get(workerId, c);
+            if (held < Number(pre.deposit_cents)) {
+                throw new UserError(`This job needs a ${fmt(Number(pre.deposit_cents))} deposit and you have ${fmt(held)} on record. Ask staff to log your deposit.`);
+            }
+        }
         const { rows } = await c.query(
             `UPDATE jobs SET status='claimed', worker_id=$2, claimed_at=now()
              WHERE id=$1 AND status='open' RETURNING *`, [jobId, workerId]);

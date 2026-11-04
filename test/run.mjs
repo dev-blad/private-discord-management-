@@ -556,6 +556,22 @@ try {
         await rejects(acc.get("T002"), "No account");
     });
 
+    await test("worker deposits: tracked, shown on !w, gate claiming", async () => {
+        const dep = require("../src/services/deposits");
+        assert.equal(await dep.get("dw1"), 0);
+        assert.equal(await dep.adjust({ discordId: "dw1", delta: 2500, actorId: "1" }), 2500);
+        await rejects(dep.adjust({ discordId: "dw1", delta: -9999, actorId: "1" }), "only have");
+        assert.equal(await dep.set({ discordId: "dw1", cents: 1000, actorId: "1" }), 1000);
+        const stats = { asWorker: { orders: 0, completed: 0, cancelled: 0, in_progress: 0 }, asCustomer: { orders: 0, cancelled: 0 } };
+        const l = wPrefix.buildLines({ tag: "<@1>", isWorker: true, wallet: { balance: 0, earnings: 0, spent: 0 }, earned: 0, rate: 0.18, stats, discountText: null, jobRoleNames: [], deposit: 1000 }).join("\n");
+        assert.ok(l.includes("Deposit Paid") && l.includes("$10.00"));
+        await wallets.deposit({ discordId: "dc1", cents: 5000, actorId: "1" });
+        const { job } = await jobs.createJob({ customerId: "dc1", priceCents: 2000, depositCents: 5000, description: "x", createdBy: "1" });
+        await rejects(jobs.claimJob({ jobId: job.id, workerId: "dw1" }), "deposit");
+        await dep.adjust({ discordId: "dw1", delta: 4000, actorId: "1" });
+        assert.equal((await jobs.claimJob({ jobId: job.id, workerId: "dw1" })).status, "claimed");
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();
