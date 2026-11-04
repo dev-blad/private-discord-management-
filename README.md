@@ -15,7 +15,7 @@ Postgres is the source of truth; every money movement is an immutable ledger row
 |---|---|---|
 | `/wallet check|history` | anyone (own) / staff (others) | balance, earnings, lifetime spend |
 | `/wallet add|remove` | staff | adjust a customer balance |
-| `/create_order`, `/finish_order`, `/cancel_order` | staff | job lifecycle |
+| `/create_order`, `/finish_order`, `/cancel_order`, `/order info|list` | staff | job lifecycle |
 | `/job info|list` | anyone | view jobs |
 | Claim button on job board | boosters | atomic, first come first served |
 | `/payout address|view` | boosters | where earnings are sent |
