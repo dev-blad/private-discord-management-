@@ -23,6 +23,7 @@ module.exports = {
             section("Orders", [["Completed", a.jobs], ["Cancelled", a.cancelled], ["New customers", a.newCustomers], ["Average order", fmt(a.avgOrder)]], 14) + "\n\n" +
             section("Money", [["Revenue", fmt(a.revenue)], ["Workers", fmt(a.workers)], ["Support cuts", fmt(a.support)],
                 ["House profit", `${fmt(a.house)} (${a.margin.toFixed(1)}%)`]], 14) + "\n\n" +
+            section("Account sales", [["Sold", a.accountSales.count], ["Revenue", fmt(a.accountSales.revenue)]], 14) + "\n\n" +
             section("Deposits by source", dep, 14) + `\n\n**Top workers**\n${top}`)
             .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined }).setTimestamp();
         return interaction.reply({ embeds: [e], ephemeral: true, allowedMentions: { parse: [] } });

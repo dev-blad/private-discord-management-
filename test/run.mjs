@@ -530,6 +530,32 @@ try {
         assert.ok(cl.includes("100M") && cl.includes("200M") && cl.includes("@VIP [5%]"));
     });
 
+    await test("account sales: ids by creator, encrypted details, stock, undo", async () => {
+        const acc = require("../src/services/accountsales");
+        process.env.ACCOUNT_ENC_KEY = "test-key-test-key-test-key";
+        const t1 = await acc.create({ creatorId: "1", creatorName: "Tony", type: "Main", title: "99 FM", description: "d", priceCents: 5000, stock: 2 });
+        const t2 = await acc.create({ creatorId: "1", creatorName: "Tony", type: "Pure", title: "Pure", description: "d", priceCents: 9000 });
+        const tr = await acc.create({ creatorId: "2", creatorName: "Trevor", type: "Main", title: "Main", description: "d", priceCents: 1000 });
+        assert.deepEqual([t1.id, t2.id, tr.id], ["T001", "T002", "Tr001"]);
+        await acc.setDetails("t001", "user: bob / pass: secret");
+        const raw = (await db.query("SELECT details_enc FROM accounts WHERE id='T001'")).rows[0].details_enc;
+        assert.ok(raw && !raw.includes("secret"));
+        assert.equal(acc.readDetails(await acc.get("T001")), "user: bob / pass: secret");
+        const s1 = await acc.recordSale({ id: "T001", buyerId: "9", soldCents: 4500, soldBy: "1" });
+        assert.equal(s1.account.stock, 1);
+        await acc.undoSale(s1.sale.id);
+        assert.equal((await acc.get("T001")).stock, 2);
+        await acc.recordSale({ id: "T001", buyerId: "9", soldCents: 5000, soldBy: "1" });
+        const last = await acc.recordSale({ id: "T001", buyerId: "8", soldCents: 5000, soldBy: "1" });
+        assert.equal(last.account.status, "sold");
+        await rejects(acc.recordSale({ id: "T001", buyerId: "7", soldCents: 1, soldBy: "1" }), "sold out");
+        assert.equal((await acc.addStock("T001", 1)).status, "available");
+        const tot = await acc.totals();
+        assert.equal(tot.count, 2); assert.equal(tot.revenue, 10000);
+        await acc.remove("T002");
+        await rejects(acc.get("T002"), "No account");
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();

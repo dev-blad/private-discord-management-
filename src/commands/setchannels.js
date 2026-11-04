@@ -9,7 +9,8 @@ const OPTS = [
     ["completed", "completed_channel_id", "Jobs move here when completed"],
     ["cancelled", "cancelled_channel_id", "Jobs move here when cancelled"],
     ["payouts", "payout_channel_id", "Payout requests for approval"],
-    ["vouches", "vouch_channel_id", "Customer reviews are posted here"]
+    ["vouches", "vouch_channel_id", "Customer reviews are posted here"],
+    ["accounts", "account_channel_id", "Account listings are posted here"]
 ];
 
 module.exports = {

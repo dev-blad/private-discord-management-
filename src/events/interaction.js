@@ -106,6 +106,11 @@ module.exports = {
             }
             if (interaction.isModalSubmit()) {
                 const [action, rawId] = interaction.customId.split(":");
+                if (action === "acct_details") {
+                    requireSupport(interaction.member);
+                    const a = await require("../services/accountsales").setDetails(rawId, interaction.fields.getTextInputValue("details").trim());
+                    return interaction.reply({ content: `🔐 Saved the delivery details for **${a.id}**. They're stored encrypted and only sent with \`/send_account\`.`, ephemeral: true });
+                }
                 if (action === "payout_paidmodal") return await onPayoutPaidModal(interaction, Number(rawId));
                 if (action === "fbmodal") return await require("../utils/feedback").onModal(interaction, Number(rawId), interaction.customId.split(":")[2]);
                 if (action === "order_modal") {

@@ -19,12 +19,13 @@ async function overview(days = null) {
         SELECT worker_id AS id, sum(worker_cents) AS total, count(*)::int AS jobs FROM jobs
         WHERE status='completed' ${since} GROUP BY 1 ORDER BY total DESC LIMIT 5`)).rows;
     const cancelled = (await query(`SELECT count(*)::int AS n FROM jobs WHERE status='cancelled' ${days ? `AND cancelled_at >= now() - interval '${Number(days)} days'` : ""}`)).rows[0].n;
+    const accountSales = await require("./accountsales").totals(days);
     const revenue = Number(j.revenue);
     return {
         jobs: j.jobs, revenue, workers: Number(j.workers), support: Number(j.support), house: Number(j.house),
         avgOrder: j.jobs ? Math.round(revenue / j.jobs) : 0,
         margin: revenue ? Number(j.house) / revenue * 100 : 0,
-        deposits, newCustomers, topWorkers, cancelled
+        deposits, newCustomers, topWorkers, cancelled, accountSales
     };
 }
 
