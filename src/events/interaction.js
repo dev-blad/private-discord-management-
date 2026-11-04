@@ -105,12 +105,15 @@ module.exports = {
                 const [action, rawId] = interaction.customId.split(":");
                 const id = Number(rawId);
                 if (!Number.isInteger(id)) return;
+                if (action === "reqdet_submit") return await require("../utils/reqdetails").onSubmitButton(interaction, id);
+                if (action === "reqdet_view") return await require("../utils/reqdetails").onView(interaction, id);
                 if (action === "job_claim") return await onJobClaim(interaction, id);
                 if (action.startsWith("payout_")) return await onPayoutButton(interaction, action, id);
                 return;
             }
             if (interaction.isModalSubmit()) {
                 const [action, rawId] = interaction.customId.split(":");
+                if (action === "reqdet_modal") return await require("../utils/reqdetails").onModal(interaction, Number(rawId));
                 if (action === "acct_details") {
                     requireSupport(interaction.member);
                     const f = id => interaction.fields.getTextInputValue(id).trim();
