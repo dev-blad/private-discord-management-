@@ -21,6 +21,12 @@ const DEFAULT_ORDER = [
     "Pets & Misc Boosting", "Raids", "Infernals, Firecapes & Quivers", "Questing", "Skilling Outfits",
     "Achievement Diaries & Combat Bundles", "Megascales & Mystic Chinning", "Endgame Kits", "Guaranteed Items"
 ];
+// Sheet spellings shown differently on the menu (the sheet's dropdown validation only allows the old ones).
+const DISPLAY_NAMES = {
+    "pets&miscboosing": "Pets & Misc Boosting",
+    "megascales&mysticsessions": "Megascales & Mystic Chinning"
+};
+const displayName = loc => DISPLAY_NAMES[String(loc).toLowerCase().replace(/\s+/g, "")] || loc;
 const HEADER_PREFIX = "pm_header_";
 const ITEMS_PER_MENU = 24; // the 25th slot is the collapsed "header" option
 
@@ -38,7 +44,7 @@ function buildMenus(entries, { emojis = true, order = DEFAULT_ORDER } = {}) {
         if (!byLocation.has(loc)) byLocation.set(loc, []);
         byLocation.get(loc).push(e);
     }
-    const rank = loc => { const i = order.findIndex(o => orderKey(o) === orderKey(loc)); return i === -1 ? order.length : i; };
+    const rank = loc => { loc = displayName(loc); const i = order.findIndex(o => orderKey(o) === orderKey(loc)); return i === -1 ? order.length : i; };
     const locations = [...byLocation.keys()].map((loc, i) => ({ loc, i })).sort((a, b) => rank(a.loc) - rank(b.loc) || a.i - b.i);
 
     const rows = [];
@@ -47,7 +53,8 @@ function buildMenus(entries, { emojis = true, order = DEFAULT_ORDER } = {}) {
         const parts = Math.ceil(items.length / ITEMS_PER_MENU);
         for (let p = 0; p < parts; p++) {
             const slice = items.slice(p * ITEMS_PER_MENU, (p + 1) * ITEMS_PER_MENU);
-            const headLabel = (parts > 1 ? `${loc} (${p + 1}/${parts})` : loc).slice(0, 100);
+            const shown = displayName(loc);
+            const headLabel = (parts > 1 ? `${shown} (${p + 1}/${parts})` : shown).slice(0, 100);
             const header = { label: headLabel, value: `${HEADER_PREFIX}${locIndex}_${p}`, default: true };
             const headEmoji = emojis ? parseEmoji(items[0].data.emoji) : undefined;
             if (headEmoji) header.emoji = headEmoji;
