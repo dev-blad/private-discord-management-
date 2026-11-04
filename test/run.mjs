@@ -655,6 +655,32 @@ try {
         await rejects(loc.remove("Nazzaa"), "no saved location");
     });
 
+    await test("/tier: set, replace, list, remove, drive discounts", async () => {
+        const tierCmd = require("../src/commands/tier");
+        const pricing = require("../src/services/pricing");
+        const config = require("../src/services/config");
+        const admin = { roles: { cache: { has: () => true } }, permissions: { has: () => true } };
+        const run = (sub, o) => new Promise(async res => {
+            const i = { member: admin, guild: { name: "G" }, options: { getSubcommand: () => sub, getRole: n => o[n] && { id: o[n] }, getNumber: n => o[n], getChannel: () => null },
+                reply: async m => res(m) };
+            try { await tierCmd.execute(i); } catch (e) { res({ error: e.message }); }
+        });
+        const before = (await pricing.tiers()).length;
+        await run("set", { role: "r-nov", spend: 200, discount: 2 });
+        await run("set", { role: "r-mag", spend: 1000, discount: 5 });
+        await run("set", { role: "r-nov", spend: 180, discount: 2 });
+        const t = await pricing.tiers();
+        assert.equal(t.length, before + 2);
+        assert.equal((await pricing.discountFor(250000)).role, "r-mag");
+        assert.equal((await pricing.discountFor(18500)).role, "r-nov");
+        const listed = await run("list", {});
+        assert.ok(listed.embeds[0].data.description.includes("<@&r-nov> = 2%") && listed.embeds[0].data.description.includes("$1,000"));
+        await run("remove", { role: "r-mag" });
+        await run("remove", { role: "r-nov" });
+        assert.equal((await pricing.tiers()).length, before);
+        assert.ok((await run("remove", { role: "r-nov" })).error.includes("isn't a tier"));
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();

@@ -18,4 +18,6 @@ async function set(key, value) {
     );
 }
 
-module.exports = { getAll, get, set };
+const del = key => query("DELETE FROM config WHERE key = $1", [key]);
+
+module.exports = { getAll, get, set, del };
