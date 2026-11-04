@@ -8,7 +8,8 @@ const OPTS = [
     ["claimed", "claimed_channel_id", "Jobs move here when a worker claims them"],
     ["completed", "completed_channel_id", "Jobs move here when completed"],
     ["cancelled", "cancelled_channel_id", "Jobs move here when cancelled"],
-    ["payouts", "payout_channel_id", "Payout requests for approval"]
+    ["payouts", "payout_channel_id", "Payout requests for approval"],
+    ["vouches", "vouch_channel_id", "Customer reviews are posted here"]
 ];
 
 module.exports = {

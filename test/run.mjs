@@ -487,6 +487,37 @@ try {
         assert.ok((await reports.exportCsv("monthly")).startsWith("month,jobs"));
     });
 
+    await test("feedback: customer only, once, posts a vouch", async () => {
+        const feedback = require("../src/utils/feedback");
+        const orders = require("../src/utils/orders");
+        await wallets.deposit({ discordId: C, cents: 5000, actorId: S });
+        const posted = [];
+        const mkCh = id => ({ id, send: async m => { posted.push({ ch: id, m }); return { id: "m" + posted.length }; }, messages: { fetch: async () => ({ edit: async () => {}, delete: async () => {} }) } });
+        const client = { channels: { fetch: async id => mkCh(id) }, users: { fetch: async id => ({ username: "u" + id.slice(-2) }) } };
+        await config.set("claim_channel_id", "C1"); await config.set("vouch_channel_id", "V1");
+        const inter = {
+            client, channelId: "T2", channel: mkCh("T2"), user: { id: S, username: "staff" },
+            member: { roles: { cache: { has: () => false } } }, guild: null
+        };
+        const text = await orders.openOrder(inter, { customerId: C, customerName: "cust", priceCents: 1000, description: "do the thing" });
+        assert.match(text, /Created order/);
+        const jobId = Number(/#(\d+)/.exec(text)[1]);
+        await jobs.claimJob({ jobId, workerId: W });
+        await jobs.completeJob({ jobId, actorId: S });
+
+        const modal = (userId, rating, review, anon) => ({
+            client, user: { id: userId, username: "cust" }, guild: { name: "G", iconURL: () => null },
+            fields: { getTextInputValue: id => id === "review" ? review : anon },
+            isFromMessage: () => true, update: async () => {}, followUp: async () => {}, deferReply: async () => {}
+        });
+        await rejects(feedback.onModal(modal(W, "positive", "great", "no"), jobId, "positive"), "Only the customer");
+        await feedback.onModal(modal(C, "positive", "great work", "yes"), jobId, "positive");
+        const vouch = posted.find(p => p.ch === "V1");
+        assert.ok(vouch && vouch.m.embeds[0].data.description.includes("Anonymous") && vouch.m.embeds[0].data.description.includes("great work"));
+        await rejects(feedback.onModal(modal(C, "negative", "changed my mind", "no"), jobId, "negative"), "already");
+        assert.equal((await db.query("SELECT count(*)::int n FROM job_feedback WHERE job_id=$1", [jobId])).rows[0].n, 1);
+    });
+
     await test("job roles and !w lines", async () => {
         await jobroles.add("555", "Caper"); await jobroles.add("555", "Caper2");
         assert.equal((await jobroles.list()).length, 1);

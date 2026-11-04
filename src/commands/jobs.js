@@ -35,33 +35,13 @@ module.exports = {
             const image = interaction.options.getString("image");
             if (image && !/^https?:\/\//i.test(image)) throw new UserError("Image must be a http(s) URL.");
 
-            const { job, spent } = await jobs.createJob({
-                customerId: customer.id,
+            const text = await require("../utils/orders").openOrder(interaction, {
+                customerId: customer.id, customerName: customer.username,
                 priceCents: toCents(interaction.options.getNumber("price")),
                 depositCents: toCents(interaction.options.getNumber("deposit") || 0),
-                description: interaction.options.getString("description"),
-                imageUrl: image,
-                channelId: interaction.channelId,
-                createdBy: interaction.user.id,
-                supportPct: await require("../services/supportroles").cutFor(interaction.member)
+                description: interaction.options.getString("description"), imageUrl: image
             });
-
-            let posted = true, ticketNote = "";
-            try {
-                const r = await board.postNewJob(interaction.client, job, interaction.channel);
-                if (r.ticket?.error) ticketNote = `\n⚠️ Couldn't post the customer's copy in this ticket: ${r.ticket.error}`;
-                else if (r.ticket?.ok) ticketNote = "\n📨 Posted in the claim channel and in this ticket.";
-            } catch (e) {
-                console.error("[jobs] failed to post job board message:", e.message);
-                posted = false;
-            }
-            await applySpendRole(interaction.guild, customer.id, spent);
-
-            return interaction.reply({
-                content: `✅ Created job **#${job.id}** (${fmt(job.price_cents)} escrowed from ${customer.username}).` +
-                    (posted ? ticketNote : "\n⚠️ Couldn't post it to the claim channel — check the bot's permissions there (and /setchannels)."),
-                ephemeral: true
-            });
+            return interaction.reply({ content: text, ephemeral: true });
         }
 
         const id = interaction.options.getInteger("id");

@@ -93,6 +93,7 @@ module.exports = {
             }
             if (interaction.isStringSelectMenu()) {
                 if (interaction.customId.startsWith("pm:")) return await require("../utils/pricingMenu").handleSelect(interaction);
+                if (interaction.customId.startsWith("fb:")) return await require("../utils/feedback").onSelect(interaction, Number(interaction.customId.split(":")[1]));
                 return;
             }
             if (interaction.isButton()) {
@@ -106,6 +107,19 @@ module.exports = {
             if (interaction.isModalSubmit()) {
                 const [action, rawId] = interaction.customId.split(":");
                 if (action === "payout_paidmodal") return await onPayoutPaidModal(interaction, Number(rawId));
+                if (action === "fbmodal") return await require("../utils/feedback").onModal(interaction, Number(rawId), interaction.customId.split(":")[2]);
+                if (action === "order_modal") {
+                    requireSupport(interaction.member);
+                    const [, customerId, price, deposit] = interaction.customId.split(":");
+                    await interaction.deferReply({ ephemeral: true });
+                    const customer = await interaction.client.users.fetch(customerId).catch(() => null);
+                    const text = await require("../utils/orders").openOrder(interaction, {
+                        customerId, customerName: customer?.username || customerId,
+                        priceCents: Number(price), depositCents: Number(deposit),
+                        description: interaction.fields.getTextInputValue("job_details").trim()
+                    });
+                    return interaction.editReply(text);
+                }
             }
         } catch (err) {
             await fail(interaction, err);
