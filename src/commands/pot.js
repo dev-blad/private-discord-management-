@@ -6,12 +6,13 @@ const { requireSupport } = require("../utils/perms");
 const profit = require("../services/profit");
 
 module.exports = {
-    data: new SlashCommandBuilder().setName("pot").setDescription("Show the payout wallet balances (staff)"),
+    data: new SlashCommandBuilder().setName("pot").setDescription("Show the payout wallet balances (staff)")
+        .addBooleanOption(o => o.setName("keep").setDescription("Post it in the channel so it stays (default: only you, disappears)")),
 
     async execute(interaction) {
         requireSupport(interaction.member);
         if (!chain.configured()) throw new UserError("No payout wallet is set up yet. Add `PAYOUT_PRIVATE_KEY` (or `PAYOUT_XPRV`) on Railway.");
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ ephemeral: !interaction.options.getBoolean("keep") });
         const s = await autopay.settings();
 
         let heldCents = 0;
@@ -23,7 +24,7 @@ module.exports = {
                 const low = b.tokenCents < s.lowCents ? " ⚠️" : "";
                 return `\`${a.label.padEnd(16)}:\` **${fmt(b.tokenCents)}**${low}  (${gas.toFixed(4)} ${a.gas} for fees)`;
             } catch (e) {
-                return `\`${a.label.padEnd(16)}:\` couldn't read (${String(e.message).slice(0, 60)})`;
+                return `\`${a.label.padEnd(16)}:\` couldn't read (${String(e.shortMessage || e.message).slice(0, 120)})`;
             }
         }));
 

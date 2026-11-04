@@ -12,11 +12,11 @@ const ERC20 = [
 
 // Payout method (saved by workers with /payout address) -> token on a network.
 const ASSETS = {
-    "USDT-ERC20":   { label: "USDT (Ethereum)", symbol: "USDT", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xdAC17F958D2ee523a2206206994597C13D831ec7", defaultMaxGwei: 20 },
-    "USDC-ERC20":   { label: "USDC (Ethereum)", symbol: "USDC", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", defaultMaxGwei: 20 },
-    "USDC-BASE":    { label: "USDC (Base)",     symbol: "USDC", decimals: 6, chainId: 8453,  gas: "ETH", rpcEnv: "BASE_RPC_URL",     rpc: "https://mainnet.base.org",            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
-    "USDT-POLYGON": { label: "USDT (Polygon)",  symbol: "USDT", decimals: 6, chainId: 137,   gas: "POL", rpcEnv: "POLYGON_RPC_URL",  rpc: "https://polygon-bor-rpc.publicnode.com", token: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F" },
-    "USDT-ARBITRUM":{ label: "USDT (Arbitrum)", symbol: "USDT", altSymbols: ["USD₮0"], decimals: 6, chainId: 42161, gas: "ETH", rpcEnv: "ARBITRUM_RPC_URL", rpc: "https://arb1.arbitrum.io/rpc",        token: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9" }
+    "USDT-ERC20":   { backupRpc: "https://eth.drpc.org", label: "USDT (Ethereum)", symbol: "USDT", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xdAC17F958D2ee523a2206206994597C13D831ec7", defaultMaxGwei: 20 },
+    "USDC-ERC20":   { backupRpc: "https://eth.drpc.org", label: "USDC (Ethereum)", symbol: "USDC", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", defaultMaxGwei: 20 },
+    "USDC-BASE":    { backupRpc: "https://base-rpc.publicnode.com", label: "USDC (Base)",     symbol: "USDC", decimals: 6, chainId: 8453,  gas: "ETH", rpcEnv: "BASE_RPC_URL",     rpc: "https://mainnet.base.org",            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+    "USDT-POLYGON": { backupRpc: "https://polygon.drpc.org", label: "USDT (Polygon)",  symbol: "USDT", altSymbols: ["USDT0", "USD₮0"], decimals: 6, chainId: 137,   gas: "POL", rpcEnv: "POLYGON_RPC_URL",  rpc: "https://polygon-bor-rpc.publicnode.com", token: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F" },
+    "USDT-ARBITRUM":{ backupRpc: "https://arbitrum-one-rpc.publicnode.com", label: "USDT (Arbitrum)", symbol: "USDT", altSymbols: ["USD₮0", "USDT0"], decimals: 6, chainId: 42161, gas: "ETH", rpcEnv: "ARBITRUM_RPC_URL", rpc: "https://arb1.arbitrum.io/rpc",        token: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9" }
 };
 
 let override = null;
@@ -49,7 +49,12 @@ function walletKey() {
 function real(method) {
     if (cache.has(method)) return cache.get(method);
     const a = ASSETS[method];
-    const provider = new ethers.JsonRpcProvider(process.env[a.rpcEnv] || a.rpc, a.chainId, { staticNetwork: true });
+    // If the main server is down or refuses us, fall back to a second one.
+    const one = url => new ethers.JsonRpcProvider(url, a.chainId, { staticNetwork: true });
+    const urls = [process.env[a.rpcEnv] || a.rpc, a.backupRpc].filter(Boolean);
+    const provider = urls.length > 1
+        ? new ethers.FallbackProvider(urls.map((u, i) => ({ provider: one(u), priority: i + 1, weight: 1, stallTimeout: 2500 })), a.chainId, { quorum: 1 })
+        : one(urls[0]);
     const wallet = new ethers.Wallet(walletKey(), provider);
     const token = new ethers.Contract(a.token, ERC20, wallet);
     let verified = false;
