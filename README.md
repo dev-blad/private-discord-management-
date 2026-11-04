@@ -32,7 +32,7 @@ Postgres is the source of truth; every money movement is an immutable ledger row
 1. `npm install`
 2. Copy `.env.example` to `.env` (or set the variables in your host) and fill it in.
 3. The bot runs migrations on startup. Or run `npm run migrate`.
-4. In Discord: `/config set job_board_channel_id <id>` and `/config set payout_channel_id <id>`.
+4. In Discord: `/setchannels` to pick the claim, claimed, completed, cancelled and payout channels.
 5. `npm start`
 
 ## Migrating from the old system

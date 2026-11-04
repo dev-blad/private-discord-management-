@@ -274,6 +274,33 @@ try {
         assert.ok(pmenu.chunkRows(rows).every(c => c.length <= 5));
     });
 
+    await test("job messages move claim → claimed → completed", async () => {
+        const board = require("../src/utils/board");
+        const sent = [], deleted = [];
+        const mkChannel = id => ({ id, send: async m => { const msg = { id: `m${sent.length + 1}` }; sent.push({ ch: id, m }); return msg; },
+            messages: { fetch: async mid => ({ id: mid, delete: async () => deleted.push(`${id}/${mid}`), edit: async () => sent.push({ ch: id, edited: mid }) }) } });
+        const client = { channels: { fetch: async id => mkChannel(id) } };
+        await config.set("claim_channel_id", "C1"); await config.set("claimed_channel_id", "C2"); await config.set("completed_channel_id", "C3");
+
+        await wallets.deposit({ discordId: C, cents: 10000, actorId: S });
+        const { job } = await jobs.createJob({ customerId: C, priceCents: 5000, depositCents: 0, description: "x", imageUrl: null, channelId: "T", createdBy: S });
+        await board.postNewJob(client, job, mkChannel("FALLBACK"));
+        assert.equal(sent[0].ch, "C1");
+        assert.ok(sent[0].m.components.length === 1);
+
+        const claimed = await jobs.claimJob({ jobId: job.id, workerId: W });
+        await board.moveBoard(client, claimed);
+        assert.equal(sent.at(-1).ch, "C2");
+        assert.equal(deleted.length, 1);
+        assert.equal(sent.at(-1).m.components.length, 0);
+
+        const done = await jobs.completeJob({ jobId: job.id, actorId: S });
+        await board.moveBoard(client, done);
+        assert.equal(sent.at(-1).ch, "C3");
+        assert.equal(deleted.length, 2);
+        assert.equal((await jobs.getJob(job.id)).board_channel_id, "C3");
+    });
+
     await test("job roles and !w lines", async () => {
         await jobroles.add("555", "Caper"); await jobroles.add("555", "Caper2");
         assert.equal((await jobroles.list()).length, 1);

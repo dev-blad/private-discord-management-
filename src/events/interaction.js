@@ -5,7 +5,7 @@ const jobs = require("../services/jobs");
 const payouts = require("../services/payouts");
 const { UserError, fmt } = require("../utils/money");
 const { isBooster, requireSupport } = require("../utils/perms");
-const { jobEmbed, payoutEmbed, payoutRow } = require("../utils/embeds");
+const { payoutEmbed, payoutRow } = require("../utils/embeds");
 
 async function fail(interaction, err) {
     const msg = err instanceof UserError ? `❌ ${err.message}` : "❌ Something went wrong. It has been logged.";
@@ -24,7 +24,9 @@ async function onJobClaim(interaction, jobId) {
     if (!isBooster(interaction.member)) throw new UserError("Only Boosters can claim jobs.");
     const job = await jobs.claimJob({ jobId, workerId: interaction.user.id });
 
-    await interaction.update({ embeds: [jobEmbed(job)], components: [] });
+    await interaction.deferUpdate();
+    await require("../utils/board").moveBoard(interaction.client, job);
+    await interaction.followUp({ content: `✅ You claimed job #${job.id}.`, ephemeral: true });
 
     // Give the worker access to the customer's ticket channel. Best effort.
     try {

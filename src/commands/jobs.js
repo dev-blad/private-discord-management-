@@ -1,9 +1,9 @@
 const { SlashCommandBuilder } = require("discord.js");
 const jobs = require("../services/jobs");
-const config = require("../services/config");
+const board = require("../utils/board");
 const { toCents, fmt, UserError } = require("../utils/money");
 const { requireSupport } = require("../utils/perms");
-const { jobEmbed, jobClaimRow } = require("../utils/embeds");
+const { jobEmbed } = require("../utils/embeds");
 const { applySpendRole } = require("../utils/roles");
 
 const idOpt = o => o.setName("id").setDescription("Job number").setMinValue(1).setRequired(true);
@@ -47,10 +47,7 @@ module.exports = {
 
             let posted = true;
             try {
-                const boardId = await config.get("job_board_channel_id");
-                const channel = boardId ? await interaction.client.channels.fetch(boardId) : interaction.channel;
-                const msg = await channel.send({ embeds: [jobEmbed(job)], components: [jobClaimRow(job.id)] });
-                await jobs.setBoardMessage(job.id, channel.id, msg.id);
+                await board.postNewJob(interaction.client, job, interaction.channel);
             } catch (e) {
                 console.error("[jobs] failed to post job board message:", e.message);
                 posted = false;
@@ -59,7 +56,7 @@ module.exports = {
 
             return interaction.reply({
                 content: `✅ Created job **#${job.id}** (${fmt(job.price_cents)} escrowed from ${customer.username}).` +
-                    (posted ? "" : "\n⚠️ Couldn't post it to the job board — check the bot's channel permissions."),
+                    (posted ? "" : "\n⚠️ Couldn't post it to the claim channel — check the bot's permissions there (and /setchannels)."),
                 ephemeral: true
             });
         }
@@ -99,13 +96,5 @@ module.exports = {
     }
 };
 
-/** Update the job-board message after a status change. Best effort. */
-async function refreshBoard(client, job) {
-    if (!job.board_channel_id || !job.board_message_id) return;
-    try {
-        const ch = await client.channels.fetch(job.board_channel_id);
-        const msg = await ch.messages.fetch(job.board_message_id);
-        await msg.edit({ embeds: [jobEmbed(job)], components: [] });
-    } catch (e) { /* message may have been deleted */ }
-}
+const refreshBoard = (client, job) => board.moveBoard(client, job);
 module.exports.refreshBoard = refreshBoard;
