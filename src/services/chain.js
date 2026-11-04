@@ -1,37 +1,71 @@
-// USDC on Base, signed by one hot-wallet key held in the PAYOUT_PRIVATE_KEY variable.
+// Stablecoin payouts on EVM chains, signed by ONE hot-wallet key (PAYOUT_PRIVATE_KEY).
+// The same 0x address works on every network below; it just has to hold the token and some gas there.
 // Everything chain-related lives here so tests can swap in a fake sender.
 const { ethers } = require("ethers");
 
-const CHAIN_ID = 8453;
-const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // native USDC on Base
-const ERC20 = ["function transfer(address to, uint256 amount) returns (bool)", "function balanceOf(address) view returns (uint256)"];
-const METHOD = "USDC-BASE";
+const ERC20 = [
+    "function transfer(address to, uint256 amount)",
+    "function balanceOf(address) view returns (uint256)",
+    "function symbol() view returns (string)",
+    "function decimals() view returns (uint8)"
+];
+
+// Payout method (saved by workers with /payout address) -> token on a network.
+const ASSETS = {
+    "USDT-ERC20":   { label: "USDT (Ethereum)", symbol: "USDT", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xdAC17F958D2ee523a2206206994597C13D831ec7", defaultMaxGwei: 20 },
+    "USDC-ERC20":   { label: "USDC (Ethereum)", symbol: "USDC", decimals: 6, chainId: 1,     gas: "ETH", rpcEnv: "ETH_RPC_URL",      rpc: "https://ethereum-rpc.publicnode.com", token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", defaultMaxGwei: 20 },
+    "USDC-BASE":    { label: "USDC (Base)",     symbol: "USDC", decimals: 6, chainId: 8453,  gas: "ETH", rpcEnv: "BASE_RPC_URL",     rpc: "https://mainnet.base.org",            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+    "USDT-POLYGON": { label: "USDT (Polygon)",  symbol: "USDT", decimals: 6, chainId: 137,   gas: "POL", rpcEnv: "POLYGON_RPC_URL",  rpc: "https://polygon-rpc.com",             token: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F" },
+    "USDT-ARBITRUM":{ label: "USDT (Arbitrum)", symbol: "USDT", decimals: 6, chainId: 42161, gas: "ETH", rpcEnv: "ARBITRUM_RPC_URL", rpc: "https://arb1.arbitrum.io/rpc",        token: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9" }
+};
 
 let override = null;
-let cached = null;
 let queue = Promise.resolve(); // sends run one at a time so nonces never collide
+const cache = new Map();
 
+const supports = method => Object.prototype.hasOwnProperty.call(ASSETS, method);
+const asset = method => ASSETS[method];
 const configured = () => Boolean(override || process.env.PAYOUT_PRIVATE_KEY);
 const isValidAddress = a => /^0x[0-9a-fA-F]{40}$/.test(String(a || "")) && ethers.isAddress(a);
-const centsToUnits = cents => BigInt(cents) * 10_000n;           // USDC has 6 decimals
-const unitsToCents = units => Number(BigInt(units) / 10_000n);
+const centsToUnits = (cents, decimals = 6) => BigInt(cents) * 10n ** BigInt(decimals - 2);
+const unitsToCents = (units, decimals = 6) => Number(BigInt(units) / 10n ** BigInt(decimals - 2));
 
-function real() {
-    if (cached) return cached;
-    const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL || "https://mainnet.base.org", CHAIN_ID, { staticNetwork: true });
-    const key = String(process.env.PAYOUT_PRIVATE_KEY).trim();
-    const wallet = new ethers.Wallet(key.startsWith("0x") ? key : `0x${key}`, provider);
-    const usdc = new ethers.Contract(USDC, ERC20, wallet);
-    cached = {
+class GasTooHigh extends Error {}
+
+function walletKey() {
+    const key = String(process.env.PAYOUT_PRIVATE_KEY || "").trim();
+    return key.startsWith("0x") ? key : `0x${key}`;
+}
+
+function real(method) {
+    if (cache.has(method)) return cache.get(method);
+    const a = ASSETS[method];
+    const provider = new ethers.JsonRpcProvider(process.env[a.rpcEnv] || a.rpc, a.chainId, { staticNetwork: true });
+    const wallet = new ethers.Wallet(walletKey(), provider);
+    const token = new ethers.Contract(a.token, ERC20, wallet);
+    let verified = false;
+    // Refuse to touch a contract that isn't the token we think it is.
+    const verify = async () => {
+        if (verified) return;
+        const [sym, dec] = await Promise.all([token.symbol(), token.decimals()]);
+        if (sym !== a.symbol || Number(dec) !== a.decimals) throw new Error(`Token check failed on ${a.label}: found ${sym}/${dec}`);
+        verified = true;
+    };
+    const s = {
         address: wallet.address,
+        asset: a,
         async balances() {
-            const [u, e] = await Promise.all([usdc.balanceOf(wallet.address), provider.getBalance(wallet.address)]);
-            return { usdcCents: unitsToCents(u), ethWei: e };
+            await verify();
+            const [t, g] = await Promise.all([token.balanceOf(wallet.address), provider.getBalance(wallet.address)]);
+            return { tokenCents: unitsToCents(t, a.decimals), gasWei: g };
         },
         // Sign first so the hash can be saved BEFORE anything reaches the network.
-        async prepare(to, units) {
-            const data = usdc.interface.encodeFunctionData("transfer", [to, units]);
-            const tx = await wallet.populateTransaction({ to: USDC, data, value: 0 });
+        async prepare(to, units, { maxGwei = 0 } = {}) {
+            await verify();
+            const data = token.interface.encodeFunctionData("transfer", [to, units]);
+            const tx = await wallet.populateTransaction({ to: a.token, data, value: 0 });
+            if (maxGwei > 0 && tx.maxFeePerGas && tx.maxFeePerGas > ethers.parseUnits(String(maxGwei), "gwei"))
+                throw new GasTooHigh(`Network fees are high right now (${ethers.formatUnits(tx.maxFeePerGas, "gwei").slice(0, 6)} gwei, limit ${maxGwei})`);
             const raw = await wallet.signTransaction(tx);
             return { raw, hash: ethers.keccak256(raw) };
         },
@@ -41,11 +75,15 @@ function real() {
             return r ? { confirmed: true, success: r.status === 1 } : { confirmed: false };
         }
     };
-    return cached;
+    cache.set(method, s);
+    return s;
 }
 
-const sender = () => override || real();
-/** Tests (or a future provider) can replace the sender. */
+/** The sender for a payout method. Tests can replace it with setSender(fn | object). */
+function sender(method) {
+    if (override) return typeof override === "function" ? override(method) : override;
+    return real(method);
+}
 const setSender = s => { override = s; };
 
 /** Run fn when earlier sends are done. */
@@ -55,6 +93,17 @@ function serial(fn) {
     return run;
 }
 
-function address() { try { return sender().address; } catch (e) { return null; } }
+/** The payout wallet's address (derived from the key; no network needed). */
+function address() {
+    try {
+        if (override) { const s = typeof override === "function" ? override("USDC-BASE") : override; return s.address || null; }
+        return process.env.PAYOUT_PRIVATE_KEY ? new ethers.Wallet(walletKey()).address : null;
+    } catch (e) { return null; }
+}
 
-module.exports = { METHOD, CHAIN_ID, USDC, configured, isValidAddress, centsToUnits, unitsToCents, sender, setSender, serial, address };
+const explorer = (method, hash) => {
+    const base = { 1: "https://etherscan.io/tx/", 8453: "https://basescan.org/tx/", 137: "https://polygonscan.com/tx/", 42161: "https://arbiscan.io/tx/" }[ASSETS[method]?.chainId] || "https://etherscan.io/tx/";
+    return base + hash;
+};
+
+module.exports = { ASSETS, GasTooHigh, supports, asset, configured, isValidAddress, centsToUnits, unitsToCents, sender, setSender, serial, address, explorer };

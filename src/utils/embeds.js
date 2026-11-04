@@ -79,14 +79,15 @@ function payoutEmbed(p) {
         )
         .setTimestamp(new Date(p.requested_at));
     if (p.decided_by) e.addFields({ name: "Decided by", value: `<@${p.decided_by}>`, inline: true });
-    if (p.paid_ref) e.addFields({ name: "Reference", value: /^0x[0-9a-fA-F]{64}$/.test(p.paid_ref) ? `[${p.paid_ref}](https://basescan.org/tx/${p.paid_ref})` : "```" + p.paid_ref + "```" });
+    if (p.paid_ref) e.addFields({ name: "Reference", value: /^0x[0-9a-fA-F]{64}$/.test(p.paid_ref) ? `[${p.paid_ref}](${require("../services/chain").explorer(p.method, p.paid_ref)})` : "```" + p.paid_ref + "```" });
     if (p.note) e.addFields({ name: "Note", value: p.note });
     return e;
 }
 
 function payoutRow(p) {
     const row = new ActionRowBuilder();
-    const canSend = require("../services/chain").configured() && p.method === require("../services/chain").METHOD;
+    const chain = require("../services/chain");
+    const canSend = chain.configured() && chain.supports(p.method);
     if (p.status === "requested") {
         row.addComponents(
             new ButtonBuilder().setCustomId(`payout_approve:${p.id}`).setLabel(canSend ? "Approve & send" : "Approve").setStyle(ButtonStyle.Success),

@@ -334,14 +334,17 @@ try {
         const state = { usdc: 100000, eth: 1n, confirm: { confirmed: true, success: true }, sent: [], failBroadcast: false };
         chain.setSender({
             address: "0xPOT",
-            balances: async () => ({ usdcCents: state.usdc, ethWei: state.eth }),
-            prepare: async (to, units) => ({ raw: `raw-${state.sent.length}`, hash: "0x" + String(state.sent.length + 1).padStart(64, "a") }),
+            balances: async () => ({ tokenCents: state.usdc, gasWei: state.eth }),
+            prepare: async (to, units, opts) => ({ raw: `raw-${state.sent.length}`, hash: "0x" + String(state.sent.length + 1).padStart(64, "a") }),
             broadcast: async raw => { if (state.failBroadcast) throw new Error("rpc exploded"); state.sent.push(raw); },
             confirm: async () => state.confirm
         });
         const U = n => `20000000000000000${String(n).padStart(2, "0")}`;
 
         assert.equal(chain.centsToUnits(1234), 12340000n);
+        assert.equal(chain.centsToUnits(1234, 18), 12340000000000000000n);
+        assert.ok(chain.supports("USDT-ERC20") && chain.supports("USDC-BASE") && !chain.supports("LTC") && !chain.supports("constructor"));
+        assert.match(chain.explorer("USDT-ERC20", "0xabc"), /etherscan\.io/);
         assert.ok(chain.isValidAddress(ADDR) && !chain.isValidAddress("0x123") && !chain.isValidAddress("hello"));
 
         // off by default: held for staff
@@ -432,6 +435,23 @@ try {
         p = await payouts.requestPayout({ discordId: U(10), cents: 5000 });
         r = await autopay.maybeAuto(p);
         assert.equal(r.state, "review"); assert.match(r.reason, /daily cap/);
+
+        // USDT on Ethereum is automatic too, and a gas spike queues it instead of overpaying
+        const seen = [];
+        const prev = state.confirm;
+        chain.setSender(m => ({ address: "0xPOT", balances: async () => ({ tokenCents: 100000, gasWei: 1n }),
+            prepare: async (to, units, opts) => { seen.push({ m, units, opts }); if (state.spike) throw new chain.GasTooHigh("Network fees are high right now (99 gwei, limit 20)"); return { raw: "r", hash: "0x" + "b".repeat(64) }; },
+            broadcast: async () => {}, confirm: async () => prev }));
+        await config.set("auto_payout_daily_worker_usd", "250");
+        await give(U(11), 5000); await wallets.setPayoutAddress(U(11), "USDT-ERC20", ADDR);
+        state.spike = true;
+        p = await payouts.requestPayout({ discordId: U(11), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "queued"); assert.match(r.reason, /fees/); assert.equal(await earnings(U(11)), 0);
+        assert.equal(seen[0].m, "USDT-ERC20"); assert.equal(seen[0].opts.maxGwei, 20);
+        state.spike = false;
+        r = await autopay.sendPayout({ payoutId: p.id, actorId: S });
+        assert.equal(r.state, "paid"); assert.equal(seen.at(-1).units, 50000000n);
 
         const { rows: bad } = await db.query(`
             SELECT w.discord_id FROM wallets w

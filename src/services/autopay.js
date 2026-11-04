@@ -31,7 +31,7 @@ async function autoDecision(p) {
     const s = await settings();
     if (!s.enabled) return { ok: false, reason: "Automatic payouts are off" };
     if (!chain.configured()) return { ok: false, reason: "No payout key is configured" };
-    if (p.method !== chain.METHOD) return { ok: false, reason: `${p.method} payouts are sent manually` };
+    if (!chain.supports(p.method)) return { ok: false, reason: `${p.method} payouts are sent manually` };
     if (p.amount_cents > s.maxCents) return { ok: false, reason: `Over the automatic limit of ${fmt(s.maxCents)}` };
     const day = await sentLastDay(p.discord_id);
     if (day.worker + p.amount_cents > s.workerDayCents) return { ok: false, reason: `Would pass this worker's daily cap of ${fmt(s.workerDayCents)}` };
@@ -61,7 +61,7 @@ async function sendPayout({ payoutId, actorId }) {
     const p = claim.rows[0];
     await audit({ query }, actorId, "payout.send_start", "payout", payoutId, { amount: p.amount_cents });
 
-    if (p.method !== chain.METHOD)
+    if (!chain.supports(p.method))
         return { state: "manual", payout: await setState(p.id, "approved", `${p.method} is paid manually`), reason: `${p.method} payouts are sent by hand` };
 
     if (!chain.isValidAddress(p.address)) {
@@ -72,16 +72,21 @@ async function sendPayout({ payoutId, actorId }) {
 
     return chain.serial(async () => {
         const back = async reason => ({ state: "queued", payout: await setState(p.id, "approved", reason), reason });
-        const s = chain.sender();
+        const s = chain.sender(p.method);
+        const a = chain.asset(p.method) || { symbol: "USDC", gas: "ETH" };
 
         let bal;
         try { bal = await s.balances(); } catch (e) { return back(`Couldn't reach the network: ${e.message}`.slice(0, 200)); }
-        if (bal.usdcCents < p.amount_cents) return back(`Payout wallet too low (${fmt(bal.usdcCents)} USDC). Top it up, then press Send.`);
-        if (bal.ethWei <= 0n) return back("Payout wallet has no ETH for fees. Add a little ETH on Base, then press Send.");
+        if (bal.tokenCents < p.amount_cents) return back(`Payout wallet too low (${fmt(bal.tokenCents)} ${a.symbol}). Top it up, then press Send.`);
+        if (bal.gasWei <= 0n) return back(`Payout wallet has no ${a.gas} for fees on ${a.label}. Add a little, then press Send.`);
 
         let prepared;
-        try { prepared = await s.prepare(p.address, chain.centsToUnits(p.amount_cents)); }
-        catch (e) { return back(`Couldn't sign the transfer: ${e.message}`.slice(0, 200)); }
+        try {
+            const maxGwei = a.defaultMaxGwei ? await num(`max_gas_gwei_${a.chainId}`, a.defaultMaxGwei) : 0;
+            prepared = await s.prepare(p.address, chain.centsToUnits(p.amount_cents, a.decimals), { maxGwei });
+        } catch (e) {
+            return back(e instanceof chain.GasTooHigh ? `${e.message}. Press Send to retry when fees drop.` : `Couldn't sign the transfer: ${e.message}`.slice(0, 200));
+        }
 
         await setState(p.id, "sending", null, prepared.hash);   // hash on record before it can move money
         try { await s.broadcast(prepared.raw); }
@@ -116,7 +121,7 @@ async function maybeAuto(payout) {
     return sendPayout({ payoutId: payout.id, actorId: "auto" });
 }
 
-const link = hash => `https://basescan.org/tx/${hash}`;
+const link = (hash, method) => chain.explorer(method, hash);
 
 /** Refresh the staff message, tell the worker, and flag anything staff must look at. */
 async function announce(client, res) {
@@ -136,16 +141,17 @@ async function announce(client, res) {
     const alert = async text => { try { if (channel) await channel.send({ content: text, allowedMentions: { parse: [] } }); } catch (e) { /* ignore */ } };
 
     if (res.state === "paid") {
-        await dm(`💸 Your payout #${p.id} of ${fmt(p.amount_cents)} was sent.\n${link(p.paid_ref)}`);
+        await dm(`💸 Your payout #${p.id} of ${fmt(p.amount_cents)} was sent.\n${link(p.paid_ref, p.method)}`);
         try {
-            const bal = await chain.sender().balances();
+            const bal = await chain.sender(p.method).balances();
             const s = await settings();
-            if (bal.usdcCents < s.lowCents) await alert(`🪫 Payout wallet is low: **${fmt(bal.usdcCents)}** USDC left. Top up \`${chain.address()}\` on Base.`);
+            const a = chain.asset(p.method);
+            if (a && bal.tokenCents < s.lowCents) await alert(`🪫 Payout wallet is low on ${a.label}: **${fmt(bal.tokenCents)}** left. Top up \`${chain.address()}\` on that network.`);
         } catch (e) { /* balance is best effort */ }
     } else if (res.state === "queued") {
         await alert(`⚠️ Payout #${p.id} (${fmt(p.amount_cents)}) wasn't sent: ${res.reason}. Funds are held, and staff can press **Send** once it's fixed.`);
     } else if (res.state === "unconfirmed") {
-        await alert(`🔎 Payout #${p.id} needs a check: ${res.reason}${p.paid_ref ? `\n${link(p.paid_ref)}` : ""}`);
+        await alert(`🔎 Payout #${p.id} needs a check: ${res.reason}${p.paid_ref ? `\n${link(p.paid_ref, p.method)}` : ""}`);
     } else if (res.state === "rejected") {
         await alert(`❌ Payout #${p.id} was rejected: ${res.reason}. The funds went back to <@${p.discord_id}>.`);
         await dm(`❌ Your payout #${p.id} couldn't be sent because your saved wallet address isn't valid. Your funds are back in your earnings. Set a new one with /payout address.`);

@@ -38,7 +38,7 @@ module.exports = {
 
         const amount = fmt(payout.amount_cents);
         let msg;
-        if (auto.state === "paid") msg = `💸 Sent! **${amount}** is on its way to your wallet.\nhttps://basescan.org/tx/${auto.payout.paid_ref}`;
+        if (auto.state === "paid") msg = `💸 Sent! **${amount}** is on its way to your wallet.\n${require("../services/chain").explorer(auto.payout.method, auto.payout.paid_ref)}`;
         else if (auto.state === "unconfirmed") msg = `📤 Payout **#${payout.id}** (${amount}) was sent and is waiting for confirmation. You'll get a DM when it lands.`;
         else if (auto.state === "review") msg = `✅ Payout **#${payout.id}** requested for ${amount} (${payout.method}). Staff will review it shortly.`;
         else msg = `✅ Payout **#${payout.id}** requested for ${amount} (${payout.method}). It's queued and will be sent shortly.`;

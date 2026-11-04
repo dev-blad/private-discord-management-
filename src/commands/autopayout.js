@@ -57,6 +57,6 @@ module.exports = {
             `Per worker per 24h: ${fmt(s.workerDayCents)}\n` +
             `Total per 24h: ${fmt(s.totalDayCents)}\n` +
             `Low wallet alert: ${fmt(s.lowCents)}\n` +
-            `Only USDC on Base is automatic. Other coins and bigger payouts wait for staff.`);
+            `Automatic: USDT/USDC on Ethereum, USDC on Base, USDT on Polygon or Arbitrum. BTC, LTC, TRC20 and bigger payouts wait for staff.`);
     }
 };

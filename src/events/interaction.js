@@ -58,7 +58,7 @@ async function onPayoutButton(interaction, action, id) {
     if (action === "payout_approve" || action === "payout_send") {
         await interaction.deferUpdate();
         let p = action === "payout_approve" ? await payouts.approve({ payoutId: id, actorId: actor }) : await payouts.getPayout(id);
-        if (chain.configured() && p.method === chain.METHOD) {
+        if (chain.configured() && chain.supports(p.method)) {
             // one tap: approve and send. The result refreshes the card and alerts staff if it needs attention.
             const res = await autopay.sendPayout({ payoutId: id, actorId: actor });
             await autopay.announce(interaction.client, res);
