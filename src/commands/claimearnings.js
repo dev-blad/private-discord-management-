@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const payouts = require("../services/payouts");
+const autopay = require("../services/autopay");
 const config = require("../services/config");
 const { toCents, fmt } = require("../utils/money");
 const { requireBooster } = require("../utils/perms");
@@ -13,6 +14,7 @@ module.exports = {
 
     async execute(interaction) {
         requireBooster(interaction.member);
+        await interaction.deferReply({ ephemeral: true });
         const raw = interaction.options.getNumber("amount");
         const payout = await payouts.requestPayout({
             discordId: interaction.user.id,
@@ -31,10 +33,15 @@ module.exports = {
             posted = false;
         }
 
-        return interaction.reply({
-            content: `✅ Payout **#${payout.id}** requested for ${fmt(payout.amount_cents)} (${payout.method}). Staff will review it shortly.` +
-                (posted ? "" : "\n⚠️ Staff couldn't be notified automatically — please ping support."),
-            ephemeral: true
-        });
+        const auto = await autopay.maybeAuto(payout);
+        if (auto.payout) await autopay.announce(interaction.client, auto);
+
+        const amount = fmt(payout.amount_cents);
+        let msg;
+        if (auto.state === "paid") msg = `💸 Sent! **${amount}** is on its way to your wallet.\nhttps://basescan.org/tx/${auto.payout.paid_ref}`;
+        else if (auto.state === "unconfirmed") msg = `📤 Payout **#${payout.id}** (${amount}) was sent and is waiting for confirmation. You'll get a DM when it lands.`;
+        else if (auto.state === "review") msg = `✅ Payout **#${payout.id}** requested for ${amount} (${payout.method}). Staff will review it shortly.`;
+        else msg = `✅ Payout **#${payout.id}** requested for ${amount} (${payout.method}). It's queued and will be sent shortly.`;
+        return interaction.editReply({ content: msg + (posted ? "" : "\n⚠️ Staff couldn't be notified automatically — please ping support.") });
     }
 };

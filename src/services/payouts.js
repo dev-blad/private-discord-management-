@@ -19,7 +19,7 @@ async function requestPayout({ discordId, cents }) {
         if (amount < Math.round(minUsd * 100)) throw new UserError(`Minimum payout is ${fmt(Math.round(minUsd * 100))}.`);
         if (amount > available) throw new UserError(`You only have ${fmt(available)} in earnings.`);
 
-        const open = await c.query("SELECT 1 FROM payouts WHERE discord_id=$1 AND status IN ('requested','approved') LIMIT 1", [discordId]);
+        const open = await c.query("SELECT 1 FROM payouts WHERE discord_id=$1 AND status IN ('requested','approved','sending') LIMIT 1", [discordId]);
         if (open.rows.length) throw new UserError("You already have a payout in progress.");
 
         const ins = await c.query(
@@ -73,8 +73,8 @@ async function reject({ payoutId, actorId, note }) {
 async function markPaid({ payoutId, actorId, ref }) {
     return withTx(async c => {
         const { rows } = await c.query(
-            `UPDATE payouts SET status='paid', paid_ref=$2, paid_at=now()
-             WHERE id=$1 AND status='approved' RETURNING *`, [payoutId, ref || null]);
+            `UPDATE payouts SET status='paid', paid_ref=COALESCE($2, paid_ref), paid_at=now(), note=NULL
+             WHERE id=$1 AND status IN ('approved','sending') RETURNING *`, [payoutId, ref || null]);
         if (!rows.length) throw new UserError(`Payout #${payoutId} must be approved before it can be marked paid.`);
         await audit(c, actorId, "payout.paid", "payout", payoutId, { ref });
         return rows[0];
@@ -87,7 +87,7 @@ async function getPayout(id) {
 }
 
 async function listPending() {
-    const { rows } = await query("SELECT * FROM payouts WHERE status IN ('requested','approved') ORDER BY id");
+    const { rows } = await query("SELECT * FROM payouts WHERE status IN ('requested','approved','sending') ORDER BY id");
     return rows;
 }
 

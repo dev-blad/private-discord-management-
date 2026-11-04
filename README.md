@@ -40,3 +40,10 @@ Postgres is the source of truth; every money movement is an immutable ledger row
 
 ## Tests
 `npm test` starts a throwaway Postgres and checks concurrency, escrow, payouts and ledger integrity.
+
+## Automatic payouts (USDC on Base)
+1. In OneKey create a NEW wallet used only for payouts. Send it a few days of USDC plus a little ETH (on **Base**) for fees.
+2. Export that wallet's private key and set it on Railway as `PAYOUT_PRIVATE_KEY`. Do not use your main wallet.
+3. Workers set `/payout address` with method **USDC (Base)**.
+4. `/pot` shows the balance. `/autopayout enable` turns it on; `/autopayout limit` sets the per-payout, per-worker and daily caps. `/autopayout disable` stops it instantly.
+Payouts above the limit, other coins, and anything that fails wait for staff (Approve & send / Send / Mark as paid).

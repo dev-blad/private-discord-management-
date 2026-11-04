@@ -42,6 +42,8 @@ async function onJobClaim(interaction, jobId) {
 
 async function onPayoutButton(interaction, action, id) {
     requireSupport(interaction.member);
+    const autopay = require("../services/autopay");
+    const chain = require("../services/chain");
 
     if (action === "payout_paid") {
         const modal = new ModalBuilder().setCustomId(`payout_paidmodal:${id}`).setTitle(`Payout #${id} sent`)
@@ -52,16 +54,24 @@ async function onPayoutButton(interaction, action, id) {
     }
 
     const actor = interaction.user.id;
-    const p = action === "payout_approve"
-        ? await payouts.approve({ payoutId: id, actorId: actor })
-        : await payouts.reject({ payoutId: id, actorId: actor });
-    await interaction.update({ embeds: [payoutEmbed(p)], components: payoutRow(p) });
 
-    if (p.status === "approved") {
+    if (action === "payout_approve" || action === "payout_send") {
+        await interaction.deferUpdate();
+        let p = action === "payout_approve" ? await payouts.approve({ payoutId: id, actorId: actor }) : await payouts.getPayout(id);
+        if (chain.configured() && p.method === chain.METHOD) {
+            // one tap: approve and send. The result refreshes the card and alerts staff if it needs attention.
+            const res = await autopay.sendPayout({ payoutId: id, actorId: actor });
+            await autopay.announce(interaction.client, res);
+            return;
+        }
+        await interaction.editReply({ embeds: [payoutEmbed(p)], components: payoutRow(p) });
         await dm(interaction.client, p.discord_id, `✅ Your payout #${p.id} of ${fmt(p.amount_cents)} was approved and will be sent shortly.`);
-    } else {
-        await dm(interaction.client, p.discord_id, `❌ Your payout #${p.id} of ${fmt(p.amount_cents)} was rejected. The funds are back in your earnings.`);
+        return;
     }
+
+    const p = await payouts.reject({ payoutId: id, actorId: actor });
+    await interaction.update({ embeds: [payoutEmbed(p)], components: payoutRow(p) });
+    await dm(interaction.client, p.discord_id, `❌ Your payout #${p.id} of ${fmt(p.amount_cents)} was rejected. The funds are back in your earnings.`);
 }
 
 async function onPayoutPaidModal(interaction, id) {

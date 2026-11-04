@@ -67,7 +67,7 @@ async function jobMessage(client, job, guild) {
 }
 
 function payoutEmbed(p) {
-    const colors = { requested: 0xf1c40f, approved: 0x3498db, paid: 0x2ecc71, rejected: 0xe74c3c };
+    const colors = { requested: 0xf1c40f, approved: 0x3498db, sending: 0x9b59b6, paid: 0x2ecc71, rejected: 0xe74c3c };
     const e = new EmbedBuilder()
         .setTitle(`Payout #${p.id} — ${p.status.toUpperCase()}`)
         .setColor(colors[p.status])
@@ -79,23 +79,27 @@ function payoutEmbed(p) {
         )
         .setTimestamp(new Date(p.requested_at));
     if (p.decided_by) e.addFields({ name: "Decided by", value: `<@${p.decided_by}>`, inline: true });
-    if (p.paid_ref) e.addFields({ name: "Reference", value: "```" + p.paid_ref + "```" });
+    if (p.paid_ref) e.addFields({ name: "Reference", value: /^0x[0-9a-fA-F]{64}$/.test(p.paid_ref) ? `[${p.paid_ref}](https://basescan.org/tx/${p.paid_ref})` : "```" + p.paid_ref + "```" });
     if (p.note) e.addFields({ name: "Note", value: p.note });
     return e;
 }
 
 function payoutRow(p) {
     const row = new ActionRowBuilder();
+    const canSend = require("../services/chain").configured() && p.method === require("../services/chain").METHOD;
     if (p.status === "requested") {
         row.addComponents(
-            new ButtonBuilder().setCustomId(`payout_approve:${p.id}`).setLabel("Approve").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`payout_approve:${p.id}`).setLabel(canSend ? "Approve & send" : "Approve").setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId(`payout_reject:${p.id}`).setLabel("Reject").setStyle(ButtonStyle.Danger)
         );
     } else if (p.status === "approved") {
+        if (canSend) row.addComponents(new ButtonBuilder().setCustomId(`payout_send:${p.id}`).setLabel("Send").setStyle(ButtonStyle.Success));
         row.addComponents(
             new ButtonBuilder().setCustomId(`payout_paid:${p.id}`).setLabel("Mark as paid").setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId(`payout_reject:${p.id}`).setLabel("Reject").setStyle(ButtonStyle.Danger)
         );
+    } else if (p.status === "sending") {
+        row.addComponents(new ButtonBuilder().setCustomId(`payout_paid:${p.id}`).setLabel("Mark as paid").setStyle(ButtonStyle.Primary));
     } else return [];
     return [row];
 }

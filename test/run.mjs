@@ -324,6 +324,123 @@ try {
         assert.equal(await sr.cutFor(member([])), 0);
     });
 
+    await test("automatic USDC payouts: limits, caps, failures never lose or double-send money", async () => {
+        const chain = require("../src/services/chain");
+        const autopay = require("../src/services/autopay");
+        const ADDR = "0x1111111111111111111111111111111111111111";
+        const give = (id, cents) => db.withTx(c => wallets.applyLedger(c, { discordId: id, bucket: "earnings", delta: cents, kind: "adjustment", actorId: S }));
+        const earnings = async id => (await wallets.getWallet(id)).earnings;
+        const mkUser = async (id, cents, addr = ADDR) => { await give(id, cents); await wallets.setPayoutAddress(id, "USDC-BASE", addr); };
+        const state = { usdc: 100000, eth: 1n, confirm: { confirmed: true, success: true }, sent: [], failBroadcast: false };
+        chain.setSender({
+            address: "0xPOT",
+            balances: async () => ({ usdcCents: state.usdc, ethWei: state.eth }),
+            prepare: async (to, units) => ({ raw: `raw-${state.sent.length}`, hash: "0x" + String(state.sent.length + 1).padStart(64, "a") }),
+            broadcast: async raw => { if (state.failBroadcast) throw new Error("rpc exploded"); state.sent.push(raw); },
+            confirm: async () => state.confirm
+        });
+        const U = n => `20000000000000000${String(n).padStart(2, "0")}`;
+
+        assert.equal(chain.centsToUnits(1234), 12340000n);
+        assert.ok(chain.isValidAddress(ADDR) && !chain.isValidAddress("0x123") && !chain.isValidAddress("hello"));
+
+        // off by default: held for staff
+        await mkUser(U(1), 5000);
+        let p = await payouts.requestPayout({ discordId: U(1), cents: null });
+        let r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "review"); assert.equal(state.sent.length, 0);
+        assert.equal(await earnings(U(1)), 0);                       // held, not lost
+
+        await config.set("auto_payout_enabled", "true");
+        await config.set("auto_payout_max_usd", "100");
+        await config.set("auto_payout_daily_worker_usd", "250");
+        await config.set("auto_payout_daily_total_usd", "1000");
+
+        // under the limit: sent and marked paid
+        await mkUser(U(2), 5000);
+        p = await payouts.requestPayout({ discordId: U(2), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "paid"); assert.equal(r.payout.status, "paid"); assert.ok(r.payout.paid_ref.startsWith("0x"));
+        assert.equal(state.sent.length, 1); assert.equal(await earnings(U(2)), 0);
+
+        // over the limit: waits for staff
+        await mkUser(U(3), 20000);
+        p = await payouts.requestPayout({ discordId: U(3), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "review"); assert.match(r.reason, /limit/); assert.equal(state.sent.length, 1);
+
+        // staff approve -> sends (never twice, even if clicked twice at once)
+        await payouts.approve({ payoutId: p.id, actorId: S });
+        const both = await Promise.allSettled([autopay.sendPayout({ payoutId: p.id, actorId: S }), autopay.sendPayout({ payoutId: p.id, actorId: S })]);
+        assert.equal(both.filter(x => x.status === "fulfilled" && x.value.state === "paid").length, 1);
+        assert.equal(both.filter(x => x.status === "rejected").length, 1);
+        assert.equal(state.sent.length, 2);
+
+        // wallet too low: stays approved, funds still held, nothing sent
+        state.usdc = 100;
+        await mkUser(U(4), 5000);
+        p = await payouts.requestPayout({ discordId: U(4), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "queued"); assert.equal(r.payout.status, "approved"); assert.equal(state.sent.length, 2); assert.equal(await earnings(U(4)), 0);
+        state.usdc = 100000;
+        r = await autopay.sendPayout({ payoutId: p.id, actorId: S });   // retry after top-up
+        assert.equal(r.state, "paid"); assert.equal(state.sent.length, 3);
+
+        // transfer reverted on-chain: back to approved, no money lost
+        state.confirm = { confirmed: true, success: false };
+        await mkUser(U(5), 5000);
+        p = await payouts.requestPayout({ discordId: U(5), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "queued"); assert.equal((await payouts.getPayout(p.id)).paid_ref, null);
+
+        // not confirmed in time: stays 'sending' for a human, can be marked paid
+        state.confirm = { confirmed: false };
+        await mkUser(U(6), 5000);
+        p = await payouts.requestPayout({ discordId: U(6), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "unconfirmed"); assert.equal(r.payout.status, "sending");
+        await rejects(payouts.reject({ payoutId: p.id, actorId: S }), "already");
+        assert.equal((await payouts.markPaid({ payoutId: p.id, actorId: S })).status, "paid");
+        state.confirm = { confirmed: true, success: true };
+
+        // broadcast error: left for a human, funds not refunded blindly
+        state.failBroadcast = true;
+        await mkUser(U(7), 5000);
+        p = await payouts.requestPayout({ discordId: U(7), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "unconfirmed"); assert.equal(await earnings(U(7)), 0);
+        state.failBroadcast = false;
+
+        // invalid address: rejected and refunded
+        await mkUser(U(8), 5000, "0xnope");
+        p = await payouts.requestPayout({ discordId: U(8), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "rejected"); assert.equal(await earnings(U(8)), 5000);
+
+        // other coins are never auto-sent
+        await give(U(9), 5000); await wallets.setPayoutAddress(U(9), "LTC", "ltc1qexampleexampleexample");
+        p = await payouts.requestPayout({ discordId: U(9), cents: null });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "review");
+
+        // daily cap per worker
+        await config.set("auto_payout_daily_worker_usd", "60");
+        await mkUser(U(10), 5000); await wallets.setPayoutAddress(U(10), "USDC-BASE", ADDR);
+        p = await payouts.requestPayout({ discordId: U(10), cents: 5000 });
+        assert.equal((await autopay.maybeAuto(p)).state, "paid");
+        await give(U(10), 5000);
+        p = await payouts.requestPayout({ discordId: U(10), cents: 5000 });
+        r = await autopay.maybeAuto(p);
+        assert.equal(r.state, "review"); assert.match(r.reason, /daily cap/);
+
+        const { rows: bad } = await db.query(`
+            SELECT w.discord_id FROM wallets w
+            LEFT JOIN (SELECT discord_id, sum(delta_cents) s FROM ledger WHERE bucket='earnings' GROUP BY 1) e ON e.discord_id=w.discord_id
+            WHERE w.earnings_cents <> COALESCE(e.s,0)`);
+        assert.deepEqual(bad, []);
+        chain.setSender(null);
+    });
+
     await test("job roles and !w lines", async () => {
         await jobroles.add("555", "Caper"); await jobroles.add("555", "Caper2");
         assert.equal((await jobroles.list()).length, 1);
