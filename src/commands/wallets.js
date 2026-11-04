@@ -28,6 +28,9 @@ module.exports = {
             .addNumberOption(o => o.setName("earnings_usd").setDescription("A worker's unpaid earnings in USD").setMinValue(0).setMaxValue(1000000))
             .addNumberOption(o => o.setName("spent_gp").setDescription("Lifetime spend in millions of GP (e.g. 200 for 200M), converted at the current rate").setMinValue(0))
             .addNumberOption(o => o.setName("spent_usd").setDescription("Lifetime spend already in USD (use this OR spent_gp)").setMinValue(0).setMaxValue(10000000)))
+        .addSubcommand(s => s.setName("import").setDescription("Bulk-migrate wallets from a CSV file (admin)")
+            .addAttachmentOption(o => o.setName("file").setDescription("CSV: discord_id,balance_usd,earnings_usd,spent_gp,spent_usd").setRequired(true))
+            .addBooleanOption(o => o.setName("dry_run").setDescription("Preview only, change nothing (default: yes)")))
         .addSubcommand(s => s.setName("history").setDescription("Recent wallet activity")
             .addUserOption(o => o.setName("user").setDescription("User (staff only; defaults to you)"))),
 
@@ -58,6 +61,40 @@ module.exports = {
                 .setThumbnail(target.displayAvatarURL({ size: 128 }))
                 .setFooter({ text: interaction.guild?.name || " ", iconURL: interaction.guild?.iconURL?.() || undefined });
             return interaction.reply({ embeds: [e], ephemeral: true });
+        }
+
+        if (sub === "import") {
+            require("../utils/perms").requireAdmin(interaction.member);
+            const dry = interaction.options.getBoolean("dry_run") !== false;
+            const att = interaction.options.getAttachment("file");
+            if (att.size > 2 * 1024 * 1024) throw new UserError("That file is too big (2MB max).");
+            await interaction.deferReply({ ephemeral: true });
+            const text = await (await fetch(att.url)).text();
+            const rate = parseFloat(await require("../services/config").get("gp_usd_rate", process.env.GP_USD_RATE || "0.18"));
+            const { parseWalletCsv } = require("../utils/walletCsv");
+            const { rows, errors } = parseWalletCsv(text, rate);
+            let done = 0, skipped = 0;
+            const totals = { balance: 0, earnings: 0, spent: 0 };
+            for (const r of rows) {
+                if (dry) {
+                    const migrated = (await require("../db").query("SELECT 1 FROM audit_log WHERE action='wallet.migrate' AND entity_id=$1 LIMIT 1", [r.discordId])).rows.length;
+                    if (migrated) { skipped++; errors.push(`line ${r.line}: ${r.discordId} already migrated`); continue; }
+                } else {
+                    try {
+                        const w = await wallets.migrate({ ...r, actorId: interaction.user.id });
+                        await require("../utils/roles").applySpendRole(interaction.guild, r.discordId, w.spent);
+                    } catch (e) {
+                        if (!(e instanceof UserError)) throw e;
+                        skipped++; errors.push(`line ${r.line}: ${r.discordId} ${e.message}`); continue;
+                    }
+                }
+                done++; totals.balance += r.balanceCents; totals.earnings += r.earningsCents; totals.spent += r.spentCents;
+            }
+            const head = dry ? "🔍 **Preview, nothing changed.** Run again with `dry_run:False` to apply." : "✅ **Import finished.**";
+            const errText = errors.length ? `\n\n**Problems (${errors.length})**\n${errors.slice(0, 15).join("\n")}${errors.length > 15 ? "\n…" : ""}` : "";
+            return interaction.editReply({
+                content: `${head}\n\`People      :\` ${done}${skipped ? ` (${skipped} skipped)` : ""}\n\`Balances    :\` ${fmt(totals.balance)}\n\`Earnings    :\` ${fmt(totals.earnings)}\n\`Lifetime    :\` ${fmt(totals.spent)} (GP converted at $${rate} per 1M)${errText}`
+            });
         }
 
         if (sub === "migrate") {

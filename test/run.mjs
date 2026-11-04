@@ -705,6 +705,23 @@ try {
         assert.ok(g.embeds && g.embeds[0].data.description.includes("Go-live") === false && g.embeds[0].data.description.includes("/tier set"));
     });
 
+    await test("wallet CSV import parsing", async () => {
+        const { parseWalletCsv } = require("../src/utils/walletCsv");
+        const csv = 'Discord ID,Balance USD,Earnings USD,Spent GP,Spent USD\n' +
+            '111111111111111111,25.50,,1000,\n' +
+            '222222222222222222,"1,200",10,,500\n' +
+            '333333333333333333,5,,100,50\n' +
+            'abc,1,,,\n' +
+            '111111111111111111,3,,,\n' +
+            '444444444444444444,,,,\n';
+        const { rows, errors } = parseWalletCsv(csv, 0.18);
+        assert.equal(rows.length, 2);
+        assert.deepEqual([rows[0].balanceCents, rows[0].spentCents], [2550, 18000]);
+        assert.deepEqual([rows[1].balanceCents, rows[1].earningsCents, rows[1].spentCents], [120000, 1000, 50000]);
+        assert.equal(errors.length, 4);
+        assert.ok(parseWalletCsv("a,b\n1,2", 0.18).errors[0].includes("discord_id"));
+    });
+
     console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
 } finally {
     await db.close(); await pg.stop();
