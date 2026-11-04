@@ -45,9 +45,11 @@ module.exports = {
                 createdBy: interaction.user.id
             });
 
-            let posted = true;
+            let posted = true, ticketNote = "";
             try {
-                await board.postNewJob(interaction.client, job, interaction.channel);
+                const r = await board.postNewJob(interaction.client, job, interaction.channel);
+                if (r.ticket?.error) ticketNote = `\n⚠️ Couldn't post the customer's copy in this ticket: ${r.ticket.error}`;
+                else if (r.ticket?.ok) ticketNote = "\n📨 Posted in the claim channel and in this ticket.";
             } catch (e) {
                 console.error("[jobs] failed to post job board message:", e.message);
                 posted = false;
@@ -56,7 +58,7 @@ module.exports = {
 
             return interaction.reply({
                 content: `✅ Created job **#${job.id}** (${fmt(job.price_cents)} escrowed from ${customer.username}).` +
-                    (posted ? "" : "\n⚠️ Couldn't post it to the claim channel — check the bot's permissions there (and /setchannels)."),
+                    (posted ? ticketNote : "\n⚠️ Couldn't post it to the claim channel — check the bot's permissions there (and /setchannels)."),
                 ephemeral: true
             });
         }

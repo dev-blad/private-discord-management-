@@ -26,7 +26,7 @@ async function postNewJob(client, job, fallbackChannel) {
     const channel = id ? await client.channels.fetch(id) : fallbackChannel;
     const msg = await channel.send(await jobMessage(client, job, channel.guild));
     await jobs.setBoardMessage(job.id, channel.id, msg.id);
-    await postTicketCopy(client, job, channel.id);
+    return { claim: channel.id, ticket: await postTicketCopy(client, job, channel.id) };
 }
 
 /** Customer's copy of the card, in the ticket. Same look, no button, no ping. */
@@ -36,13 +36,15 @@ async function ticketPayload(client, job, guild) {
 }
 
 async function postTicketCopy(client, job, claimChannelId) {
-    if (!job.channel_id || job.channel_id === claimChannelId) return;
+    if (!job.channel_id || job.channel_id === claimChannelId) return { skipped: true };
     try {
         const ch = await client.channels.fetch(job.channel_id);
         const msg = await ch.send(await ticketPayload(client, job, ch.guild));
         await jobs.setTicketMessage(job.id, msg.id);
+        return { ok: true };
     } catch (e) {
         console.error(`[board] couldn't post job #${job.id} to its ticket:`, e.message);
+        return { error: e.message };
     }
 }
 
