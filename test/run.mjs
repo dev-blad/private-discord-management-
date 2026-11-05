@@ -242,6 +242,75 @@ try {
         assert.equal(calc.lookupInBlocks(entries, "zzz"), null);
     });
 
+    await test("boss event: tokens from completed spend, kills, credit, stock", async () => {
+        const boss = require("../src/services/boss");
+        const U = "boss-user";
+        await wallets.deposit({ discordId: U, cents: 100000, actorId: S });
+        const mk = async cents => {
+            const { job } = await jobs.createJob({ customerId: U, priceCents: cents, depositCents: 0, description: "b", imageUrl: null, channelId: "1", createdBy: S });
+            await jobs.claimJob({ jobId: job.id, workerId: W });
+            return job;
+        };
+        // off by default: no tokens
+        let j = await mk(5000);
+        assert.equal((await jobs.completeJob({ jobId: j.id, actorId: S })).bossTokens, 0);
+        await rejects(boss.kill({ discordId: U }), "isn't running");
+
+        await config.set("boss_enabled", "true"); await config.set("boss_usd_per_token", "25");
+        j = await mk(6000);                                   // $60 -> 2 tokens, $10 progress
+        assert.equal((await jobs.completeJob({ jobId: j.id, actorId: S })).bossTokens, 2);
+        j = await mk(1500);                                   // progress $25 -> 1 more
+        assert.equal((await jobs.completeJob({ jobId: j.id, actorId: S })).bossTokens, 1);
+        assert.equal((await boss.status(U)).tokens, 3);
+
+        // a cancelled order never earns tokens
+        const { job: cj } = await jobs.createJob({ customerId: U, priceCents: 9000, depositCents: 0, description: "c", imageUrl: null, channelId: "1", createdBy: S });
+        await jobs.cancelJob({ jobId: cj.id, actorId: S });
+        assert.equal((await boss.status(U)).tokens, 3);
+
+        const bal0 = (await wallets.getWallet(U)).balance;
+        const drops = await boss.kill({ discordId: U, amount: 2 });
+        assert.equal(drops.length, 2);
+        const credit = drops.reduce((n, d) => n + d.credit_cents, 0);
+        assert.equal((await wallets.getWallet(U)).balance, bal0 + credit);
+        assert.equal((await boss.status(U)).tokens, 1);
+        await rejects(boss.kill({ discordId: U, amount: 5 }), "only have 1");
+        assert.equal((await boss.status(U)).tokens, 1);       // failed kill spends nothing
+
+        // limited stock item: wins once then drops out of the pool
+        await db.query("UPDATE boss_prizes SET active=FALSE");
+        const item = await boss.addPrize({ rarity: "common", name: "Free 99", kind: "item", stock: 1 });
+        await boss.give({ discordId: U, amount: 2, actorId: S });
+        const [d1] = await boss.kill({ discordId: U });
+        assert.equal(d1.prize_name, "Free 99"); assert.equal(d1.redeemed, false);
+        await rejects(boss.kill({ discordId: U }), "empty");
+        assert.equal((await boss.pendingItems()).length, 1);
+        await boss.redeem({ dropId: d1.id, actorId: S });
+        await rejects(boss.redeem({ dropId: d1.id, actorId: S }), "unredeemed");
+        assert.ok((await boss.stats()).kills >= 3);
+    });
+
+    await test("/boss kill runs the full animation and /boss tokens answers", async () => {
+        const boss = require("../src/services/boss"), cmd = require("../src/commands/boss");
+        await config.set("boss_enabled", "true");
+        await db.query("INSERT INTO boss_prizes (rarity,name,kind,credit_cents) SELECT r,'t','credit',10 FROM unnest(ARRAY['common','uncommon','rare','ultra']) r");
+        await boss.give({ discordId: "anim", amount: 3, actorId: S });
+        const sentEmbeds = [];
+        const mk = (sub, amount) => ({
+            user: { id: "anim", toString: () => "<@anim>", displayName: "Anim" }, guild: { channels: { fetch: async () => ({ send: async () => {} }) } },
+            options: { getSubcommand: () => sub, getInteger: () => amount },
+            reply: async o => { sentEmbeds.push(o); }, editReply: async o => { sentEmbeds.push(o); }
+        });
+        await cmd.execute(mk("kill", 1));
+        assert.ok(sentEmbeds.length >= 8);
+        assert.match(sentEmbeds.at(-1).embeds[0].data.author.name, /dropped loot/);
+        await cmd.execute(mk("kill", 2));
+        assert.match(sentEmbeds.at(-1).embeds[0].data.author.name, /killed 2 bosses/);
+        await cmd.execute(mk("tokens"));
+        await cmd.execute(mk("loot"));
+        await cmd.execute(mk("table"));
+    });
+
     await test("gp_convert parses k/m/b", async () => {
         const g = require("../src/commands/gp_convert");
         assert.equal(g.parseGp("3456m"), 3456);

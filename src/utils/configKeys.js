@@ -30,6 +30,22 @@ const KEYS = [
     { key: "pricing_link_2", label: "Link button 2", group: "Pricing menu", type: "text" },
     { key: "pricing_link_3", label: "Link button 3", group: "Pricing menu", type: "text" },
     { key: "pricing_link_4", label: "Link button 4", group: "Pricing menu", type: "text" },
+    // boss event
+    { key: "boss_enabled", label: "Boss event on", group: "Boss event", type: "bool", def: "false", help: "Turns token earning and /boss kill on or off" },
+    { key: "boss_usd_per_token", label: "USD per token", group: "Boss event", type: "usd", def: "25", help: "Completed-order spend needed for one boss token" },
+    { key: "boss_announce_channel_id", label: "Boss announce channel", group: "Boss event", type: "channel", help: "Rare and ultra drops are announced here" },
+    { key: "boss_weight_common", label: "Common chance", group: "Boss event", type: "number", def: "60", help: "Relative weight of the common boss" },
+    { key: "boss_weight_uncommon", label: "Uncommon chance", group: "Boss event", type: "number", def: "25" },
+    { key: "boss_weight_rare", label: "Rare chance", group: "Boss event", type: "number", def: "10" },
+    { key: "boss_weight_ultra", label: "Ultra chance", group: "Boss event", type: "number", def: "5" },
+    { key: "boss_name_common", label: "Common boss", group: "Boss event", type: "text", def: "General Graardor" },
+    { key: "boss_name_uncommon", label: "Uncommon boss", group: "Boss event", type: "text", def: "Zulrah" },
+    { key: "boss_name_rare", label: "Rare boss", group: "Boss event", type: "text", def: "Vorkath" },
+    { key: "boss_name_ultra", label: "Ultra boss", group: "Boss event", type: "text", def: "Nex" },
+    { key: "boss_img_common", label: "Common boss image", group: "Boss event", type: "url" },
+    { key: "boss_img_uncommon", label: "Uncommon boss image", group: "Boss event", type: "url" },
+    { key: "boss_img_rare", label: "Rare boss image", group: "Boss event", type: "url" },
+    { key: "boss_img_ultra", label: "Ultra boss image", group: "Boss event", type: "url" },
     // links
     { key: "sythe_vouch_url", label: "Sythe vouch thread", group: "Links", type: "url", help: "Shown in account delivery DMs" }
 ];
