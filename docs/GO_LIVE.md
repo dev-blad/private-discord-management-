@@ -12,9 +12,3 @@ When Daniel says it's go-live night, walk him through this in order. `/golive` i
 7. `/deposit set` for each worker's deposit.
 8. Payouts: fund the payout wallet, `/pot`, a $10 test payout, then `/autopayout enable`.
 9. Switch off Titanite's bot on the server; rotate old secrets (test bot token, old Google key).
-
-## Boss event (December)
-1. `/config set boss_usd_per_token 25` (spend per token) and optionally `boss_announce_channel_id`.
-2. Review loot with `/bossevent prizes`; add item prizes with `/bossevent prize_add`; check cost with `/bossevent odds`.
-3. Turn on with `/config set boss_enabled true`. Tokens only come from orders completed while it is on.
-4. Staff deliver item wins with `/bossevent wins` then `/bossevent redeem`.

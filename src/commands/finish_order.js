@@ -31,7 +31,6 @@ module.exports = {
                 `\`Order ID  :\` #${job.id}\n` +
                 `\`Customer  :\` <@${job.customer_id}>\n` +
                 `\`Worker    :\` <@${job.worker_id}>\n\n` +
-                (job.bossTokens > 0 ? `🗡️ **+${job.bossTokens} Boss Token${job.bossTokens === 1 ? "" : "s"}!** Use \`/boss kill\` to fight a boss.\n\n` : "") +
                 "Thank you for your business! Please leave feedback below.")
             .setFooter({ text: interaction.guild?.name || "Orders", iconURL: interaction.guild?.iconURL?.() || undefined })
             .setTimestamp();

@@ -82,9 +82,7 @@ async function completeJob({ jobId, actorId }) {
             `UPDATE jobs SET status='completed', completed_at=now(), worker_cents=$2, house_cents=$3, support_cents=$4
              WHERE id=$1 RETURNING *`, [jobId, workerCents, houseCents, supportCents]);
         await audit(c, actorId, "job.complete", "job", jobId, { workerCents, supportCents, houseCents });
-        const result = upd.rows[0];
-        result.bossTokens = await require("./boss").grantForSpend(c, job.customer_id, job.price_cents);
-        return result;
+        return upd.rows[0];
     });
 }
 
