@@ -242,6 +242,14 @@ try {
         assert.equal(calc.lookupInBlocks(entries, "zzz"), null);
     });
 
+    await test("gp_convert parses k/m/b", async () => {
+        const g = require("../src/commands/gp_convert");
+        assert.equal(g.parseGp("3456m"), 3456);
+        assert.equal(g.parseGp("3.4b"), 3400);
+        assert.equal(g.parseGp("500k"), 0.5);
+        assert.equal(g.parseGp("abc"), null);
+    });
+
     await test("!s pricing math", async () => {
         const entry = (await catalog.getTab("Skilling"))[0];
         const g = sPrefix.priceRange(entry, 1, 99);
