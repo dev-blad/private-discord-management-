@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const catalog = require("../services/catalog");
-const { getCalcSettings, withDiscount, footer } = require("../utils/calc");
+const { getCalcSettings, withDiscount, footer, header } = require("../utils/calc");
 const { getXpRequired } = require("../utils/xp");
 const { skillIcons } = require("../utils/skillIcons");
 const { UserError } = require("../utils/money");
@@ -53,14 +53,11 @@ function priceRange(entry, reqStart, reqEnd) {
 }
 
 function describe(entry, reqStart, reqEnd, groups, discountPct, rate) {
-    let d = "`Start    : " + reqStart + "`\n";
-    d += "`Stop     : " + reqEnd + "`\n";
-    if (discountPct > 0) d += "`Discount : " + discountPct + "%`\n";
-    d += "\n";
+    let d = header([["Skill", entry.name], ["Start", reqStart], ["Stop", reqEnd], ["Discount", discountPct + "%"]]) + "\n\n";
     if (entry.data.notes) d += `__**Notes**__\n${entry.data.notes}\n\n`;
     for (const g of groups) {
         const total = withDiscount(g.totalUsd, discountPct);
-        d += `__${g.name}__\n`;
+        d += `__**${g.name}**__\n`;
         for (const s of g.segments) d += `\`${s.label}\` XP: ${s.xp.toLocaleString("en-US")}\n`;
         d += `💰 **$${total.toFixed(2)}** | 🪙 **${Math.round(total / rate)}M**\n\n`;
     }

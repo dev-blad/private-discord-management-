@@ -1,21 +1,12 @@
 const { EmbedBuilder } = require("discord.js");
 const catalog = require("../services/catalog");
-const { getCalcSettings, splitAmount, withDiscount, lookupInBlocks, pricedOptions, footer } = require("../utils/calc");
+const { getCalcSettings, splitAmount, lookupInBlocks, footer, describeBlock } = require("../utils/calc");
 const { UserError } = require("../utils/money");
 
 const TAB = "Endgame Kits";
 
-function describe({ entry, option }, amount, discountPct, rate) {
-    let d = "`Amount   : " + amount + "`\n";
-    d += "`Discount : " + discountPct + "%`\n\n";
-    if (entry.data.notes) d += `__**Notes**__\n${entry.data.notes}\n\n`;
-
-    const shown = option ? [option] : pricedOptions(entry);
-    if (!shown.length || shown.some(o => !(o.price > 0))) return null;
-    return d + shown.map(o => {
-        const usd = withDiscount(o.price * amount, discountPct);
-        return "`" + o.title + "` " + `💰 $${usd.toFixed(2)} | 🪙 ${(usd / rate).toFixed(2)}M`;
-    }).join("\n");
+function describe(found, amount, discountPct, rate) {
+    return describeBlock(found, amount, discountPct, rate, [["Kit", found.entry.name]]);
 }
 
 module.exports = {

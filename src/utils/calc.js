@@ -64,9 +64,33 @@ function lookupInBlocks(entries, rawQuery) {
 /** options with a usable price, for a block or a single option */
 const pricedOptions = entry => entry.data.options.filter(o => o.price && o.price > 0);
 
+/** Boxed header lines: `Label    : value` (one code span per line, colons aligned). */
+function header(pairs) {
+    const list = pairs.filter(p => p && p[1] !== null && p[1] !== undefined && p[1] !== "");
+    const w = Math.max(...list.map(p => String(p[0]).length), 1);
+    return list.map(([l, v]) => "`" + String(l).padEnd(w) + " : " + v + "`").join("\n");
+}
+
+/** One priced line in the shared look: `Title` – $usd | 🪙 gpM */
+const priceLine = (title, usd, gp) => "`" + title + "` – $" + usd.toFixed(2) + " | 🪙 " + gp.toFixed(2) + "M";
+
+/** Shared body for !b / !raids / !kits: header, notes, then one line per priced option. Null if nothing priced. */
+function describeBlock({ entry, option }, amount, discountPct, rate, headerPairs) {
+    const shown = option ? [option] : pricedOptions(entry);
+    if (!shown.length || shown.some(o => !(o.price > 0))) return null;
+    let d = header([...headerPairs, ["Amount", amount], ["Discount", discountPct + "%"]]) + "\n\n";
+    if (entry.data.notes) d += `__**Notes**__\n${entry.data.notes}\n\n`;
+    d += "__**Prices**__\n";
+    d += shown.map(o => {
+        const usd = withDiscount(o.price * amount, discountPct);
+        return priceLine(o.title, usd, usd / rate);
+    }).join("\n");
+    return d;
+}
+
 const footer = message => ({
     text: message.guild?.name || " ",
     iconURL: message.guild?.iconURL?.() || undefined
 });
 
-module.exports = { squash, getCalcSettings, splitAmount, withDiscount, lookupInBlocks, pricedOptions, footer };
+module.exports = { squash, getCalcSettings, splitAmount, withDiscount, lookupInBlocks, pricedOptions, footer, header, priceLine, describeBlock };

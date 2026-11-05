@@ -1,30 +1,13 @@
 const { EmbedBuilder } = require("discord.js");
 const catalog = require("../services/catalog");
-const { getCalcSettings, splitAmount, withDiscount, lookupInBlocks, pricedOptions, footer } = require("../utils/calc");
+const { getCalcSettings, splitAmount, lookupInBlocks, footer, describeBlock } = require("../utils/calc");
 const { UserError } = require("../utils/money");
 
 const TAB = "PvM";
 
 /** Build the embed description for a PvM lookup. Pure, so it can be tested. */
-function describe({ entry, option }, amount, discountPct, rate) {
-    const line = o => {
-        const usd = withDiscount(o.price * amount, discountPct);
-        return { usd, gp: usd / rate };
-    };
-    let d = "`Boss     : " + entry.name + "`\n";
-    d += "`Amount   : " + amount + "`\n";
-    d += "`Discount : " + discountPct + "%`\n\n";
-    if (entry.data.notes) d += `__**Notes**__\n${entry.data.notes}\n\n`;
-
-    const shown = option ? [option] : pricedOptions(entry);
-    if (!shown.length || shown.some(o => !(o.price > 0))) return null;
-    shown.forEach((o, i) => {
-        const { usd, gp } = line(o);
-        d += `__${o.title}__\n`;
-        d += `Price each: **$${o.price.toFixed(2)}**\n`;
-        d += `💰 **$${usd.toFixed(2)}** | 🪙 **${gp.toFixed(2)}M**` + (i < shown.length - 1 ? "\n\n" : "");
-    });
-    return d;
+function describe(found, amount, discountPct, rate) {
+    return describeBlock(found, amount, discountPct, rate, [["Boss", found.entry.name]]);
 }
 
 module.exports = {
@@ -43,7 +26,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setColor(0x00ffcc)
-            .setTitle("PVM Calculator")
+            .setAuthor({ name: "PvM Calculator", iconURL: "https://oldschool.runescape.wiki/images/Combat_icon.png" })
             .setThumbnail(found.entry.data.thumbnail || null)
             .setDescription(description.trim().slice(0, 4096))
             .setFooter(footer(message));

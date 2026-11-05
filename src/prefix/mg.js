@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const catalog = require("../services/catalog");
-const { getCalcSettings, splitAmount, withDiscount, footer } = require("../utils/calc");
+const { getCalcSettings, splitAmount, withDiscount, footer, header, priceLine } = require("../utils/calc");
 const { UserError } = require("../utils/money");
 
 const TAB = "Minigames";
@@ -14,7 +14,7 @@ function calcLines(entry, amount, discountPct, gpUsdRate) {
         if (!opt.price) continue;
         const usd = withDiscount(opt.price * amount, discountPct);
         const memo = opt.memo ? ` (${opt.memo})` : "";
-        lines.push(`\`${opt.title}${memo}\` – $${usd.toFixed(2)} | 🪙 ${(usd / gpUsdRate).toFixed(2)}M`);
+        lines.push(priceLine(opt.title + memo, usd, usd / gpUsdRate));
     }
     return lines;
 }
@@ -37,17 +37,13 @@ module.exports = {
         const lines = calcLines(entry, amount, discountPct, rate);
         if (!lines.length) throw new UserError(`No valid price data found for ${entry.name}.`);
 
-        const header = [
-            "`Minigame : " + entry.name + "`",
-            "`Amount   : " + amount + "`",
-            "`Discount : " + discountPct + "%`"
-        ].join("\n");
+        const head = header([["Minigame", entry.name], ["Amount", amount], ["Discount", discountPct + "%"]]);
 
         const embed = new EmbedBuilder()
             .setColor(0x00ffcc)
             .setAuthor({ name: "Minigames Calculator", iconURL: AUTHOR_ICON })
             .setThumbnail(entry.data.thumbnail || FALLBACK_THUMB)
-            .setDescription((header + "\n\n" + lines.join("\n")).slice(0, 4096))
+            .setDescription((head + "\n\n__**Prices**__\n" + lines.join("\n")).slice(0, 4096))
             .setFooter(footer(message));
 
         return message.channel.send({ embeds: [embed] });
