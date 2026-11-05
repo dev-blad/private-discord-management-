@@ -34,6 +34,7 @@ const KEYS = [
     { key: "boss_enabled", label: "Boss event on", group: "Boss event", type: "bool", def: "false", help: "Turns token earning and /boss kill on or off" },
     { key: "boss_usd_per_token", label: "USD per token", group: "Boss event", type: "usd", def: "25", help: "Completed-order spend needed for one boss token" },
     { key: "boss_announce_channel_id", label: "Boss announce channel", group: "Boss event", type: "channel", help: "Rare and ultra drops are announced here" },
+    { key: "boss_death_pct", label: "Death chance", group: "Boss event", type: "percent", def: "5", help: "Chance each kill ends in death with no loot" },
     { key: "boss_weight_common", label: "Common chance", group: "Boss event", type: "number", def: "60", help: "Relative weight of the common boss" },
     { key: "boss_weight_uncommon", label: "Uncommon chance", group: "Boss event", type: "number", def: "25" },
     { key: "boss_weight_rare", label: "Rare chance", group: "Boss event", type: "number", def: "10" },
