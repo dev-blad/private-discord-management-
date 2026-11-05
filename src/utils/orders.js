@@ -25,7 +25,8 @@ async function openOrder(interaction, { customerId, customerName, priceCents, de
         note = "\n⚠️ Couldn't post it to the claim channel. Check the bot's permissions there (and /setchannels).";
     }
     await applySpendRole(interaction.guild, customerId, spent);
-    return `✅ Created order **#${job.id}** (${fmt(job.price_cents)} escrowed from ${customerName}).${note}`;
+    const disc = job.discount_pct > 0 ? ` 🏷️ ${job.discount_pct}% boss discount applied (${fmt(Number(job.list_price_cents))} → ${fmt(job.price_cents)}).` : "";
+    return `✅ Created order **#${job.id}** (${fmt(job.price_cents)} escrowed from ${customerName}).${disc}${note}`;
 }
 
 module.exports = { openOrder };

@@ -9,10 +9,18 @@ async function createJob({ customerId, priceCents, depositCents, description, im
     const pct = Number(await config.get("worker_pct", "80"));
     if (pct + supportPct > 100) throw new UserError(`Worker ${pct}% + support ${supportPct}% is over 100%. Ask an admin to fix the cuts.`);
     return withTx(async c => {
+        // A pending boss-event discount comes off this order (and is used up). Splits are worked out on the discounted price.
+        let discountPct = 0, listPrice = priceCents;
+        const dq = await c.query("SELECT percent FROM customer_discounts WHERE discord_id=$1 FOR UPDATE", [customerId]);
+        if (dq.rows.length) {
+            discountPct = dq.rows[0].percent;
+            priceCents = Math.max(1, priceCents - Math.floor(priceCents * discountPct / 100));
+            await c.query("DELETE FROM customer_discounts WHERE discord_id=$1", [customerId]);
+        }
         const { rows } = await c.query(
-            `INSERT INTO jobs (customer_id, price_cents, deposit_cents, worker_pct, description, image_url, channel_id, created_by, support_pct)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-            [customerId, priceCents, depositCents, pct, description, imageUrl, channelId, createdBy, supportPct]
+            `INSERT INTO jobs (customer_id, price_cents, deposit_cents, worker_pct, description, image_url, channel_id, created_by, support_pct, discount_pct, list_price_cents)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+            [customerId, priceCents, depositCents, pct, description, imageUrl, channelId, createdBy, supportPct, discountPct, listPrice]
         );
         const job = rows[0];
         const w = await applyLedger(c, {

@@ -90,10 +90,17 @@ async function kill({ discordId, amount = 1 }) {
             const prize = weightedPick(prizes.filter(p => p.rarity === rarity), p => p.weight);
 
             if (prize.stock !== null) await c.query("UPDATE boss_prizes SET stock = stock - 1 WHERE id=$1", [prize.id]);
+            const auto = prize.kind === "credit" || prize.kind === "discount";
             const { rows: d } = await c.query(
                 `INSERT INTO boss_drops (discord_id, prize_id, rarity, prize_name, kind, credit_cents, redeemed, redeemed_at, redeemed_by)
                  VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $7 THEN now() END, CASE WHEN $7 THEN 'auto' END) RETURNING *`,
-                [discordId, prize.id, rarity, prize.name, prize.kind, prize.credit_cents, prize.kind === "credit"]);
+                [discordId, prize.id, rarity, prize.name, prize.kind, prize.credit_cents, auto]);
+            if (prize.kind === "discount") {
+                await c.query(
+                    `INSERT INTO customer_discounts (discord_id, percent, source) VALUES ($1,$2,$3)
+                     ON CONFLICT (discord_id) DO UPDATE SET percent = GREATEST(customer_discounts.percent, EXCLUDED.percent), source = EXCLUDED.source`,
+                    [discordId, prize.discount_pct, `Boss drop #${d[0].id}`]);
+            }
             if (prize.kind === "credit" && prize.credit_cents > 0) {
                 await applyLedger(c, {
                     discordId, bucket: "balance", delta: prize.credit_cents, kind: "event_prize",
@@ -127,11 +134,13 @@ async function listPrizes() {
     return (await query("SELECT * FROM boss_prizes ORDER BY array_position(ARRAY['common','uncommon','rare','ultra'], rarity), id")).rows;
 }
 
-async function addPrize({ rarity, name, kind, creditCents = 0, stock = null, weight = 1 }) {
+async function addPrize({ rarity, name, kind, creditCents = 0, discountPct = 0, roleName = null, stock = null, weight = 1 }) {
     if (kind === "credit" && creditCents <= 0) throw new UserError("Wallet credit prizes need an amount.");
+    if (kind === "discount" && !(discountPct >= 1 && discountPct <= 100)) throw new UserError("Discount prizes need a percent from 1 to 100.");
+    if (kind === "role" && !roleName) throw new UserError("Role prizes need a role name.");
     const { rows } = await query(
-        `INSERT INTO boss_prizes (rarity, name, kind, credit_cents, stock, weight) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [rarity, name, kind, kind === "credit" ? creditCents : 0, stock, weight]);
+        `INSERT INTO boss_prizes (rarity, name, kind, credit_cents, discount_pct, role_name, stock, weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [rarity, name, kind, kind === "credit" ? creditCents : 0, kind === "discount" ? discountPct : 0, kind === "role" ? roleName : null, stock, weight]);
     return rows[0];
 }
 

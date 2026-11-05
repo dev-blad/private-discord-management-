@@ -281,13 +281,37 @@ try {
         await db.query("UPDATE boss_prizes SET active=FALSE");
         const item = await boss.addPrize({ rarity: "common", name: "Free 99", kind: "item", stock: 1 });
         await boss.give({ discordId: U, amount: 2, actorId: S });
+        const pendingBefore = (await boss.pendingItems()).length;
         const [d1] = await boss.kill({ discordId: U });
         assert.equal(d1.prize_name, "Free 99"); assert.equal(d1.redeemed, false);
         await rejects(boss.kill({ discordId: U }), "empty");
-        assert.equal((await boss.pendingItems()).length, 1);
+        assert.equal((await boss.pendingItems()).length, pendingBefore + 1);
         await boss.redeem({ dropId: d1.id, actorId: S });
         await rejects(boss.redeem({ dropId: d1.id, actorId: S }), "unredeemed");
         assert.ok((await boss.stats()).kills >= 3);
+    });
+
+    await test("boss discount prize comes off the next order only, once", async () => {
+        const boss = require("../src/services/boss");
+        const U = "disc-user";
+        await wallets.deposit({ discordId: U, cents: 100000, actorId: S });
+        await db.query("UPDATE boss_prizes SET active=FALSE");
+        await boss.addPrize({ rarity: "common", name: "10% off", kind: "discount", discountPct: 10 });
+        await rejects(boss.addPrize({ rarity: "common", name: "bad", kind: "discount", discountPct: 0 }), "percent");
+        await rejects(boss.addPrize({ rarity: "common", name: "bad", kind: "role" }), "role name");
+        await boss.give({ discordId: U, amount: 2, actorId: S });
+        const [d] = await boss.kill({ discordId: U });
+        assert.equal(d.kind, "discount"); assert.equal(d.redeemed, true);
+        const first = await jobs.createJob({ customerId: U, priceCents: 10000, depositCents: 0, description: "d", imageUrl: null, channelId: "1", createdBy: S });
+        assert.equal(first.job.price_cents, 9000); assert.equal(first.job.discount_pct, 10); assert.equal(Number(first.job.list_price_cents), 10000);
+        assert.equal(first.spent, 9000);
+        const second = await jobs.createJob({ customerId: U, priceCents: 10000, depositCents: 0, description: "d", imageUrl: null, channelId: "1", createdBy: S });
+        assert.equal(second.job.price_cents, 10000); assert.equal(second.job.discount_pct, 0);   // used up
+        // winning two keeps the better one, not a stack
+        await boss.kill({ discordId: U });
+        await db.query("UPDATE customer_discounts SET percent=25 WHERE discord_id=$1", [U]);
+        await boss.kill({ discordId: U }).catch(() => {});
+        assert.equal((await db.query("SELECT percent FROM customer_discounts WHERE discord_id=$1", [U])).rows[0].percent, 25);
     });
 
     await test("gp_convert parses k/m/b", async () => {
