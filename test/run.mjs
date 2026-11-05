@@ -290,27 +290,6 @@ try {
         assert.ok((await boss.stats()).kills >= 3);
     });
 
-    await test("/boss kill runs the full animation and /boss tokens answers", async () => {
-        const boss = require("../src/services/boss"), cmd = require("../src/commands/boss");
-        await config.set("boss_enabled", "true");
-        await db.query("INSERT INTO boss_prizes (rarity,name,kind,credit_cents) SELECT r,'t','credit',10 FROM unnest(ARRAY['common','uncommon','rare','ultra']) r");
-        await boss.give({ discordId: "anim", amount: 3, actorId: S });
-        const sentEmbeds = [];
-        const mk = (sub, amount) => ({
-            user: { id: "anim", toString: () => "<@anim>", displayName: "Anim" }, guild: { channels: { fetch: async () => ({ send: async () => {} }) } },
-            options: { getSubcommand: () => sub, getInteger: () => amount },
-            reply: async o => { sentEmbeds.push(o); }, editReply: async o => { sentEmbeds.push(o); }
-        });
-        await cmd.execute(mk("kill", 1));
-        assert.ok(sentEmbeds.length >= 8);
-        assert.match(sentEmbeds.at(-1).embeds[0].data.author.name, /dropped loot/);
-        await cmd.execute(mk("kill", 2));
-        assert.match(sentEmbeds.at(-1).embeds[0].data.author.name, /killed 2 bosses/);
-        await cmd.execute(mk("tokens"));
-        await cmd.execute(mk("loot"));
-        await cmd.execute(mk("table"));
-    });
-
     await test("gp_convert parses k/m/b", async () => {
         const g = require("../src/commands/gp_convert");
         assert.equal(g.parseGp("3456m"), 3456);

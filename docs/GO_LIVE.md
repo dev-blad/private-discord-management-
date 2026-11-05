@@ -14,7 +14,8 @@ When Daniel says it's go-live night, walk him through this in order. `/golive` i
 9. Switch off Titanite's bot on the server; rotate old secrets (test bot token, old Google key).
 
 ## Boss event (December)
-1. `/config set boss_usd_per_token 25` (spend per token) and optionally `boss_announce_channel_id`.
-2. Review loot with `/bossevent prizes`; add item prizes with `/bossevent prize_add`; check cost with `/bossevent odds`.
-3. Turn on with `/config set boss_enabled true`. Tokens only come from orders completed while it is on.
-4. Staff deliver item wins with `/bossevent wins` then `/bossevent redeem`.
+The game's commands (`/boss`, `/bossevent`) live on the support bot. This bot owns the data: it grants a token when an order completes (while `boss_enabled` is true) and the support bot reads and writes the same database through `BOSS_DATABASE_URL`.
+1. In Railway, give the support bot a `BOSS_DATABASE_URL` variable pointing at this bot's Postgres.
+2. `/bossevent set` on the support bot (or `/config set` here): `usd_per_token`, `announce_channel`, then `enabled true`.
+3. Add loot with `/bossevent prize_add` and check the cost with `/bossevent odds`.
+4. Staff deliver item wins with `/bossevent wins` then `/bossevent delivered`.
