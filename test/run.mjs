@@ -307,11 +307,16 @@ try {
         assert.equal(first.spent, 9000);
         const second = await jobs.createJob({ customerId: U, priceCents: 10000, depositCents: 0, description: "d", imageUrl: null, channelId: "1", createdBy: S });
         assert.equal(second.job.price_cents, 10000); assert.equal(second.job.discount_pct, 0);   // used up
-        // winning two keeps the better one, not a stack
-        await boss.kill({ discordId: U });
-        await db.query("UPDATE customer_discounts SET percent=25 WHERE discord_id=$1", [U]);
-        await boss.kill({ discordId: U }).catch(() => {});
-        assert.equal((await db.query("SELECT percent FROM customer_discounts WHERE discord_id=$1", [U])).rows[0].percent, 25);
+        // every win is saved as its own coupon; each order uses the best one, one at a time
+        await db.query("DELETE FROM customer_discounts WHERE discord_id=$1", [U]);
+        await boss.give({ discordId: U, amount: 3, actorId: S });
+        await boss.kill({ discordId: U, amount: 3 });
+        await db.query("UPDATE customer_discounts SET percent=25 WHERE id=(SELECT id FROM customer_discounts WHERE discord_id=$1 ORDER BY id LIMIT 1)", [U]);
+        assert.equal(Number((await db.query("SELECT count(*) FROM customer_discounts WHERE discord_id=$1", [U])).rows[0].count), 3);
+        const a1 = await jobs.createJob({ customerId: U, priceCents: 10000, depositCents: 0, description: "d", imageUrl: null, channelId: "1", createdBy: S });
+        assert.equal(a1.job.discount_pct, 25); assert.equal(a1.job.discountsLeft, 2);
+        const a2 = await jobs.createJob({ customerId: U, priceCents: 10000, depositCents: 0, description: "d", imageUrl: null, channelId: "1", createdBy: S });
+        assert.equal(a2.job.discount_pct, 10); assert.equal(a2.job.discountsLeft, 1);
     });
 
     await test("gp_convert parses k/m/b", async () => {

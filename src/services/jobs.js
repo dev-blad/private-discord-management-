@@ -10,12 +10,13 @@ async function createJob({ customerId, priceCents, depositCents, description, im
     if (pct + supportPct > 100) throw new UserError(`Worker ${pct}% + support ${supportPct}% is over 100%. Ask an admin to fix the cuts.`);
     return withTx(async c => {
         // A pending boss-event discount comes off this order (and is used up). Splits are worked out on the discounted price.
-        let discountPct = 0, listPrice = priceCents;
-        const dq = await c.query("SELECT percent FROM customer_discounts WHERE discord_id=$1 FOR UPDATE", [customerId]);
+        let discountPct = 0, listPrice = priceCents, discountsLeft = 0;
+        const dq = await c.query("SELECT id, percent FROM customer_discounts WHERE discord_id=$1 ORDER BY percent DESC, id LIMIT 1 FOR UPDATE", [customerId]);
         if (dq.rows.length) {
             discountPct = dq.rows[0].percent;
             priceCents = Math.max(1, priceCents - Math.floor(priceCents * discountPct / 100));
-            await c.query("DELETE FROM customer_discounts WHERE discord_id=$1", [customerId]);
+            await c.query("DELETE FROM customer_discounts WHERE id=$1", [dq.rows[0].id]);
+            discountsLeft = Number((await c.query("SELECT count(*) FROM customer_discounts WHERE discord_id=$1", [customerId])).rows[0].count);
         }
         const { rows } = await c.query(
             `INSERT INTO jobs (customer_id, price_cents, deposit_cents, worker_pct, description, image_url, channel_id, created_by, support_pct, discount_pct, list_price_cents)
@@ -23,6 +24,7 @@ async function createJob({ customerId, priceCents, depositCents, description, im
             [customerId, priceCents, depositCents, pct, description, imageUrl, channelId, createdBy, supportPct, discountPct, listPrice]
         );
         const job = rows[0];
+        job.discountsLeft = discountsLeft;
         const w = await applyLedger(c, {
             discordId: customerId, bucket: "balance", delta: -priceCents,
             kind: "job_charge", jobId: job.id, actorId: createdBy, note: `Job #${job.id}`

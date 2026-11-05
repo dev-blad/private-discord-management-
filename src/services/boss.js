@@ -96,9 +96,7 @@ async function kill({ discordId, amount = 1 }) {
                  VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $7 THEN now() END, CASE WHEN $7 THEN 'auto' END) RETURNING *`,
                 [discordId, prize.id, rarity, prize.name, prize.kind, prize.credit_cents, auto]);
             if (prize.kind === "discount") {
-                await c.query(
-                    `INSERT INTO customer_discounts (discord_id, percent, source) VALUES ($1,$2,$3)
-                     ON CONFLICT (discord_id) DO UPDATE SET percent = GREATEST(customer_discounts.percent, EXCLUDED.percent), source = EXCLUDED.source`,
+                await c.query("INSERT INTO customer_discounts (discord_id, percent, source) VALUES ($1,$2,$3)",
                     [discordId, prize.discount_pct, `Boss drop #${d[0].id}`]);
             }
             if (prize.kind === "credit" && prize.credit_cents > 0) {
