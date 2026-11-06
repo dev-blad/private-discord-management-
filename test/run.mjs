@@ -319,16 +319,15 @@ try {
         assert.equal(a2.job.discount_pct, 10); assert.equal(a2.job.discountsLeft, 1);
     });
 
-    await test("no self-dealing: can't order for yourself or claim your own order (admins can)", async () => {
+    await test("no self-dealing: can't order for yourself or claim an order you paid for (admins can); creators can work their own jobs", async () => {
         const U = "selfdeal";
         await wallets.deposit({ discordId: U, cents: 50000, actorId: S });
         const mkJob = (customerId, createdBy, allowSelf) => jobs.createJob({ customerId, priceCents: 1000, depositCents: 0, description: "x", imageUrl: null, channelId: "1", createdBy, allowSelf });
         await rejects(mkJob(U, U), "for yourself");
         await mkJob(U, U, true);                                           // an admin may
         const { job } = await mkJob(U, "staffer");
-        await rejects(jobs.claimJob({ jobId: job.id, workerId: U }), "paid for or created");           // customer can't take it
-        await rejects(jobs.claimJob({ jobId: job.id, workerId: "staffer" }), "paid for or created");   // creator can't take it
-        await jobs.claimJob({ jobId: job.id, workerId: "someone-else" });                              // anyone else can
+        await rejects(jobs.claimJob({ jobId: job.id, workerId: U }), "you paid for");                  // customer can't take it
+        await jobs.claimJob({ jobId: job.id, workerId: "staffer" });                                   // the creator can: staff do jobs themselves
     });
 
     await test("gp_convert parses k/m/b", async () => {

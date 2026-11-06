@@ -46,9 +46,9 @@ async function setTicketMessage(jobId, messageId) {
 /** Atomic claim: only succeeds if the job is still open. */
 async function claimJob({ jobId, workerId, allowSelf = false }) {
     return withTx(async c => {
-        const pre = (await c.query("SELECT deposit_cents, status, customer_id, created_by FROM jobs WHERE id=$1", [jobId])).rows[0];
-        if (pre && !allowSelf && (pre.customer_id === workerId || pre.created_by === workerId)) {
-            throw new UserError("You can't claim an order you paid for or created. Another Booster has to take it.");
+        const pre = (await c.query("SELECT deposit_cents, status, customer_id FROM jobs WHERE id=$1", [jobId])).rows[0];
+        if (pre && !allowSelf && pre.customer_id === workerId) {
+            throw new UserError("You can't claim an order you paid for. Another Booster has to take it.");
         }
         if (pre && pre.status === "open" && Number(pre.deposit_cents) > 0) {
             const held = await require("./deposits").get(workerId, c);
