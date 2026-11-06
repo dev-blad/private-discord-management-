@@ -244,6 +244,7 @@ try {
 
     await test("boss event: tokens from completed spend, kills, credit, stock", async () => {
         const boss = require("../src/services/boss");
+        await db.query("DELETE FROM boss_bosses"); // catalog tests above synced a roster; this test uses the fallback boss
         const U = "boss-user";
         await wallets.deposit({ discordId: U, cents: 100000, actorId: S });
         const mk = async cents => {
@@ -291,8 +292,46 @@ try {
         assert.ok((await boss.stats()).kills >= 3);
     });
 
+    await test("boss roster: grouped from sheet, tiers, kc, CM/HM left out, kills come from the boss", async () => {
+        const R = require("../src/services/bossroster");
+        const blk = (name, opts) => ({ name, kind: "block", data: { options: opts.map(([title, price]) => ({ title, price })) } });
+        const roster = R.buildRoster({
+            pvm: [blk("Slayer Bosses", [["Cerberus", 0.1], ["Araxxor", 0.18]]),
+                  blk("Godwars Bosses", [["Nex - Mass World", 0.18], ["Nex - Duo", 2.25]]),
+                  blk("Revenants", [["Imp", 0.01]]), blk("Doom Of Mokhaiotl (Delve)", [["Waves 1-8", 7]])],
+            raids: [blk("Chambers of Xeric", [["Solo", 2.2]]), blk("Challenge Mode COX", [["CM", 4.5]]),
+                    blk("Theatre of Blood", [["4 Man", 2.2]]), blk("Theatre of Blood - Entry/Hmt", [["Entry", 2]]),
+                    blk("Tombs of Amascut Solos - Normal Mode", [["a", 2.25]]), blk("Tombs of Amascut Solos - Expert Mode", [["b", 2.75]])]
+        });
+        const by = Object.fromEntries(roster.map(b => [b.name, b]));
+        assert.equal(by["Cerberus"].tier, "common"); assert.equal(by["Cerberus"].kc, 10);
+        assert.equal(by["Araxxor"].tier, "uncommon"); assert.equal(by["Araxxor"].kc, 25);
+        assert.equal(by["Nex"].priceCents, 18); assert.equal(roster.filter(b => b.name === "Nex").length, 1);
+        assert.equal(by["Doom of Mokhaiotl"].kc, 1);
+        assert.equal(by["Chambers of Xeric"].tier, "rare"); assert.equal(by["Chambers of Xeric"].kc, 5);
+        assert.equal(by["Theatre of Blood"].tier, "ultra"); assert.equal(by["Tombs of Amascut"].kc, 3);
+        assert.ok(!by["Imp"]); assert.equal(roster.length, 7);
+
+        const boss = require("../src/services/boss");
+        await db.query("INSERT INTO boss_bosses (name, tier, kc, price_cents) VALUES ('Test Boss','common',10,10)");
+        await db.query("UPDATE boss_bosses SET in_sheet = (name='Test Boss')");
+        await db.query("UPDATE boss_prizes SET active=FALSE");
+        await config.set("boss_enabled", "true");
+        await config.set("boss_weight_uncommon", "0"); await config.set("boss_weight_rare", "0"); await config.set("boss_weight_ultra", "0");
+        await boss.addPrize({ rarity: "common", name: "$1 credit", kind: "credit", creditCents: 100, weight: 60 });
+        await boss.give({ discordId: "roster-u", amount: 200, actorId: S });
+        const drops = await boss.kill({ discordId: "roster-u", amount: 200 });
+        assert.ok(drops.every(d => d.boss_name === "Test Boss"));
+        const kc = drops.filter(d => d.prize_name === "10 Test Boss kills").length;
+        assert.ok(kc > 50 && kc < 110, `kc share ~40% of 200, got ${kc}`);
+        assert.ok(drops.filter(d => d.kind === "item").every(d => !d.redeemed));
+        await db.query("DELETE FROM boss_bosses"); await config.set("boss_weight_uncommon", "25");
+        await config.set("boss_weight_rare", "10"); await config.set("boss_weight_ultra", "5");
+    });
+
     await test("boss discount prize comes off the next order only, once", async () => {
         const boss = require("../src/services/boss");
+        await db.query("DELETE FROM boss_bosses");
         const U = "disc-user";
         await wallets.deposit({ discordId: U, cents: 100000, actorId: S });
         await db.query("UPDATE boss_prizes SET active=FALSE");

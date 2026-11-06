@@ -71,6 +71,23 @@ function weightedPick(items, w) {
     return items[items.length - 1];
 }
 
+/** Share (percent) of a boss's drops that is its own kill count. */
+const kcShare = async () => {
+    const v = parseFloat(await config.get("boss_kc_pct", "40"));
+    return v >= 0 && v < 100 ? v : 40;
+};
+
+/** Bosses of a tier; falls back to the single configured boss when the roster isn't synced yet. */
+async function bossesOfTier(tier) {
+    const r = await require("./bossroster").activeBosses();
+    const own = r.filter(b => b.tier === tier);
+    return own.length ? own : [{ ...(await bossFor(tier)), kc: 0 }];
+}
+function bossesOf(roster, tier) {
+    const own = roster.filter(b => b.tier === tier);
+    return own.length ? own : [{ name: DEFAULT_BOSSES[tier].name, img: DEFAULT_BOSSES[tier].img, kc: 0 }];
+}
+
 /** Spend `amount` tokens, roll bosses and prizes. All-or-nothing. */
 async function kill({ discordId, amount = 1 }) {
     if (!(await enabled())) throw new UserError("The boss event isn't running right now.");
@@ -81,20 +98,33 @@ async function kill({ discordId, amount = 1 }) {
         if (have < amount) throw new UserError(have ? `You only have ${have} boss token${have === 1 ? "" : "s"}.` : "You have no boss tokens. You earn them by completing orders.");
 
         const drops = [];
+        const roster = await require("./bossroster").activeBosses(c);
+        const kcPct = await kcShare();
         for (let i = 0; i < amount; i++) {
             const { rows: prizes } = await c.query(
                 "SELECT * FROM boss_prizes WHERE active AND (stock IS NULL OR stock > 0) FOR UPDATE");
-            const live = RARITIES.filter(r => w[r] > 0 && prizes.some(p => p.rarity === r));
+            const live = RARITIES.filter(r => w[r] > 0 && (prizes.some(p => p.rarity === r) || roster.some(b => b.tier === r && b.kc > 0)));
             if (!live.length) throw new UserError("The loot tables are empty right now. Ask staff.");
             const rarity = weightedPick(live, r => w[r]);
-            const prize = weightedPick(prizes.filter(p => p.rarity === rarity), p => p.weight);
 
-            if (prize.stock !== null) await c.query("UPDATE boss_prizes SET stock = stock - 1 WHERE id=$1", [prize.id]);
+            const pool = bossesOf(roster, rarity);
+            const boss = weightedPick(pool, () => 1);
+            const generic = prizes.filter(p => p.rarity === rarity);
+            let prize = null;
+            const gw = generic.reduce((n, p) => n + p.weight, 0);
+            const kcW = boss.kc > 0 ? (gw > 0 ? gw * kcPct / (100 - kcPct) : 1) : 0;
+            if (kcW > 0 && Math.random() * (gw + kcW) < kcW) {
+                prize = { id: null, kind: "item", name: `${boss.kc} ${boss.name} kills`, credit_cents: 0, discount_pct: 0 };
+            } else {
+                if (!generic.length) throw new UserError("The loot tables are empty right now. Ask staff.");
+                prize = weightedPick(generic, p => p.weight);
+                if (prize.stock !== null) await c.query("UPDATE boss_prizes SET stock = stock - 1 WHERE id=$1", [prize.id]);
+            }
             const auto = prize.kind === "credit" || prize.kind === "discount";
             const { rows: d } = await c.query(
-                `INSERT INTO boss_drops (discord_id, prize_id, rarity, prize_name, kind, credit_cents, redeemed, redeemed_at, redeemed_by)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $7 THEN now() END, CASE WHEN $7 THEN 'auto' END) RETURNING *`,
-                [discordId, prize.id, rarity, prize.name, prize.kind, prize.credit_cents, auto]);
+                `INSERT INTO boss_drops (discord_id, prize_id, rarity, prize_name, kind, credit_cents, redeemed, redeemed_at, redeemed_by, boss_name)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $7 THEN now() END, CASE WHEN $7 THEN 'auto' END, $8) RETURNING *`,
+                [discordId, prize.id, rarity, prize.name, prize.kind, prize.credit_cents, auto, boss.name]);
             if (prize.kind === "discount") {
                 await c.query("INSERT INTO customer_discounts (discord_id, percent, source) VALUES ($1,$2,$3)",
                     [discordId, prize.discount_pct, `Boss drop #${d[0].id}`]);
@@ -105,7 +135,7 @@ async function kill({ discordId, amount = 1 }) {
                     note: `Boss drop #${d[0].id}: ${prize.name}`, source: "boss_event"
                 });
             }
-            drops.push(d[0]);
+            drops.push({ ...d[0], boss });
         }
         await c.query("UPDATE boss_tokens SET tokens=tokens-$2, kills=kills+$2 WHERE discord_id=$1", [discordId, amount]);
         return drops;
@@ -151,16 +181,20 @@ async function removePrize(id) {
 /** Expected wallet credit per token, from the live tables and rarity weights. */
 async function expectedValue() {
     const w = await weights();
+    const kcPct = await kcShare();
     const prizes = (await query("SELECT * FROM boss_prizes WHERE active AND (stock IS NULL OR stock > 0)")).rows;
-    const live = RARITIES.filter(r => w[r] > 0 && prizes.some(p => p.rarity === r));
+    const roster = await require("./bossroster").activeBosses();
+    const live = RARITIES.filter(r => w[r] > 0 && (prizes.some(p => p.rarity === r) || roster.some(b => b.tier === r && b.kc > 0)));
     const wTotal = live.reduce((n, r) => n + w[r], 0);
     const perRarity = {};
     let ev = 0;
     for (const r of live) {
         const ps = prizes.filter(p => p.rarity === r);
         const pw = ps.reduce((n, p) => n + p.weight, 0);
-        const avg = ps.reduce((n, p) => n + p.credit_cents * p.weight, 0) / pw;
-        perRarity[r] = { chance: w[r] / wTotal, avgCents: avg };
+        const hasKc = roster.some(b => b.tier === r && b.kc > 0);
+        const kcW = hasKc ? (pw > 0 ? pw * kcPct / (100 - kcPct) : 1) : 0;
+        const avg = pw + kcW > 0 ? ps.reduce((n, p) => n + p.credit_cents * p.weight, 0) / (pw + kcW) : 0;
+        perRarity[r] = { chance: w[r] / wTotal, avgCents: avg, kcChance: pw + kcW > 0 ? kcW / (pw + kcW) : 0, bosses: roster.filter(b => b.tier === r).length };
         ev += (w[r] / wTotal) * avg;
     }
     const per = Math.round((await usdPerToken()) * 100);
@@ -176,6 +210,6 @@ async function stats() {
 }
 
 module.exports = {
-    RARITIES, COLORS, enabled, usdPerToken, weights, bossFor, grantForSpend, give, status, kill,
+    RARITIES, COLORS, bossesOfTier, kcShare, enabled, usdPerToken, weights, bossFor, grantForSpend, give, status, kill,
     myDrops, pendingItems, redeem, listPrizes, addPrize, removePrize, expectedValue, stats, fmt
 };

@@ -254,6 +254,8 @@ async function syncCatalog({ fetchTabs = fetchTabsFromGoogle, actorId = null, fo
         }
     });
 
+    try { await require("./bossroster").syncRoster(); } catch (e) { console.error("[bossroster] sync failed:", e.message); }
+
     const summary = { tabs: results, totalEntries: accepted.reduce((n, a) => n + a.entries.length, 0), ms: Date.now() - started.getTime() };
     await query(
         "INSERT INTO catalog_sync_log (started_at, actor_id, ok, summary) VALUES ($1,$2,$3,$4)",

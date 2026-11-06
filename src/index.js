@@ -36,6 +36,7 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 async function start() {
     await require("./db/migrate").migrate();
+    require("./services/bossroster").syncRoster().catch(e => console.error("[bossroster]", e.message));
     try {
         console.log("🔄 Refreshing slash commands...");
         await rest.put(
