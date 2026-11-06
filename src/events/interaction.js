@@ -22,7 +22,7 @@ async function dm(client, userId, content) {
 
 async function onJobClaim(interaction, jobId) {
     if (!isBooster(interaction.member)) throw new UserError("Only Boosters can claim jobs.");
-    const job = await jobs.claimJob({ jobId, workerId: interaction.user.id });
+    const job = await jobs.claimJob({ jobId, workerId: interaction.user.id, allowSelf: require("../utils/perms").isAdmin(interaction.member) });
 
     await interaction.deferUpdate();
     await require("../utils/board").moveBoard(interaction.client, job);
@@ -56,6 +56,8 @@ async function onPayoutButton(interaction, action, id) {
     const actor = interaction.user.id;
 
     if (action === "payout_approve" || action === "payout_send") {
+        const own = (await payouts.getPayout(id))?.discord_id === actor;
+        if (own && !require("../utils/perms").isAdmin(interaction.member)) throw new UserError("You can't approve your own payout. Another staff member or an admin has to.");
         await interaction.deferUpdate();
         let p = action === "payout_approve" ? await payouts.approve({ payoutId: id, actorId: actor }) : await payouts.getPayout(id);
         if (chain.configured() && chain.supports(p.method)) {

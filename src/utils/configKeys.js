@@ -3,6 +3,7 @@
 const KEYS = [
     // channels
     { key: "claim_channel_id", label: "Claim channel", group: "Channels", type: "channel", help: "New jobs appear here. Easier: /setchannels" },
+    { key: "wallet_log_channel_id", label: "Wallet log channel", group: "Channels", type: "channel", help: "Every manual wallet add, remove and migrate is posted here" },
     { key: "claimed_channel_id", label: "Claimed channel", group: "Channels", type: "channel", help: "Jobs move here when claimed" },
     { key: "completed_channel_id", label: "Completed channel", group: "Channels", type: "channel", help: "Jobs move here when completed" },
     { key: "cancelled_channel_id", label: "Cancelled channel", group: "Channels", type: "channel", help: "Jobs move here when cancelled" },

@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const wallets = require("../services/wallets");
 const { toCents, fmt, UserError } = require("../utils/money");
-const { isSupport, requireSupport } = require("../utils/perms");
+const { isSupport, requireSupport, requireAdmin, requireNotSelf } = require("../utils/perms");
+const { walletLog } = require("../utils/walletlog");
 
 const amountOpt = o => o.setName("amount").setDescription("Amount in USD, e.g. 25 or 12.50").setMinValue(0.01).setMaxValue(1000000).setRequired(true);
 
@@ -98,6 +99,7 @@ module.exports = {
         }
 
         if (sub === "migrate") {
+            requireAdmin(interaction.member);
             const o = interaction.options;
             const gpM = o.getNumber("spent_gp"), spentUsd = o.getNumber("spent_usd");
             if (gpM !== null && spentUsd !== null) throw new UserError("Give lifetime spend as GP or USD, not both.");
@@ -109,6 +111,7 @@ module.exports = {
             const balanceCents = toCents(o.getNumber("balance_usd") || 0), earningsCents = toCents(o.getNumber("earnings_usd") || 0);
             if (!balanceCents && !earningsCents && !spentCents) throw new UserError("Give at least one of balance, earnings or spend.");
             const w = await wallets.migrate({ discordId: target.id, balanceCents, earningsCents, spentCents, actorId: interaction.user.id });
+            await walletLog(interaction, { action: "migrate", targetId: target.id, text: `\`Balance:\` ${fmt(balanceCents)} \`Earnings:\` ${fmt(earningsCents)} \`Spend:\` ${fmt(spentCents)}` });
             await require("../utils/roles").applySpendRole(interaction.guild, target.id, w.spent);
             return interaction.reply({
                 content: `✅ Migrated <@${target.id}>: balance ${fmt(w.balance)}, earnings ${fmt(w.earnings)}, lifetime spend ${fmt(w.spent)}` +
@@ -117,10 +120,15 @@ module.exports = {
             });
         }
 
+        requireNotSelf(interaction.member, target.id, interaction.user.id, sub === "add" ? "add money to your wallet" : "change your wallet");
         const cents = toCents(interaction.options.getNumber("amount"));
         const note = interaction.options.getString("note");
+        if (sub === "add" && !require("../utils/perms").isAdmin(interaction.member) && !note && !interaction.options.getString("source")) {
+            throw new UserError("Say how they paid (`source`) or add a payment reference in `note`, so the deposit can be checked later.");
+        }
         const fn = sub === "add" ? wallets.deposit : wallets.charge;
         const r = await fn({ discordId: target.id, cents, actorId: interaction.user.id, note, ...(sub === "add" ? { source: interaction.options.getString("source") } : {}) });
+        await walletLog(interaction, { action: sub, targetId: target.id, text: `\`Amount :\` ${fmt(cents)}${interaction.options.getString("source") ? ` · ${interaction.options.getString("source")}` : ""}${note ? `\n\`Note   :\` ${note}` : ""}` });
         return interaction.reply({
             content: `✅ ${sub === "add" ? "Added" : "Removed"} ${fmt(cents)} ${sub === "add" ? "to" : "from"} **${target.username}**. New balance: ${fmt(r.balance)}`,
             ephemeral: true

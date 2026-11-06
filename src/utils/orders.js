@@ -12,7 +12,8 @@ async function openOrder(interaction, { customerId, customerName, priceCents, de
         customerId, priceCents, depositCents, description, imageUrl,
         channelId: interaction.channelId,
         createdBy: interaction.user.id,
-        supportPct: await require("../services/supportroles").cutFor(interaction.member)
+        supportPct: await require("../services/supportroles").cutFor(interaction.member),
+        allowSelf: require("./perms").isAdmin(interaction.member)
     });
 
     let note = "";

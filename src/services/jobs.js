@@ -5,7 +5,8 @@ const { audit } = require("./audit");
 const config = require("./config");
 
 /** Create a job and escrow the customer's funds in one transaction. */
-async function createJob({ customerId, priceCents, depositCents, description, imageUrl, channelId, createdBy, supportPct = 0 }) {
+async function createJob({ customerId, priceCents, depositCents, description, imageUrl, channelId, createdBy, supportPct = 0, allowSelf = false }) {
+    if (!allowSelf && customerId === createdBy) throw new UserError("You can't create an order for yourself. Ask an admin.");
     const pct = Number(await config.get("worker_pct", "80"));
     if (pct + supportPct > 100) throw new UserError(`Worker ${pct}% + support ${supportPct}% is over 100%. Ask an admin to fix the cuts.`);
     return withTx(async c => {
@@ -43,9 +44,12 @@ async function setTicketMessage(jobId, messageId) {
 }
 
 /** Atomic claim: only succeeds if the job is still open. */
-async function claimJob({ jobId, workerId }) {
+async function claimJob({ jobId, workerId, allowSelf = false }) {
     return withTx(async c => {
-        const pre = (await c.query("SELECT deposit_cents, status FROM jobs WHERE id=$1", [jobId])).rows[0];
+        const pre = (await c.query("SELECT deposit_cents, status, customer_id, created_by FROM jobs WHERE id=$1", [jobId])).rows[0];
+        if (pre && !allowSelf && (pre.customer_id === workerId || pre.created_by === workerId)) {
+            throw new UserError("You can't claim an order you paid for or created. Another Booster has to take it.");
+        }
         if (pre && pre.status === "open" && Number(pre.deposit_cents) > 0) {
             const held = await require("./deposits").get(workerId, c);
             if (held < Number(pre.deposit_cents)) {

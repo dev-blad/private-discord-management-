@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const deposits = require("../services/deposits");
 const { toCents, fmt } = require("../utils/money");
-const { requireSupport } = require("../utils/perms");
+const { requireSupport, requireNotSelf } = require("../utils/perms");
 
 const amount = o => o.setName("amount").setDescription("USD").setMinValue(0.01).setMaxValue(1000000).setRequired(true);
 const user = o => o.setName("user").setDescription("Worker").setRequired(true);
@@ -32,6 +32,7 @@ module.exports = {
         }
         if (sub === "check") return interaction.reply({ content: `<@${target.id}> has **${fmt(await deposits.get(target.id))}** on deposit.`, ...mention });
 
+        requireNotSelf(interaction.member, target.id, interaction.user.id, "change your deposit");
         const cents = toCents(interaction.options.getNumber("amount"));
         const note = `by ${interaction.user.username}`;
         const next = sub === "set"

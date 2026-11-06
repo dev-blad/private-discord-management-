@@ -18,7 +18,16 @@ function require_(check, label) {
     };
 }
 
+/** Support staff can't change their own money or records; only an admin can. */
+function requireNotSelf(member, targetId, actorId, what) {
+    if (targetId === actorId && !isAdmin(member)) {
+        const { UserError } = require("./money");
+        throw new UserError(`You can't ${what} for yourself. Ask an admin to do it.`);
+    }
+}
+
 module.exports = {
+    requireNotSelf,
     isAdmin, isSupport, isBooster,
     requireAdmin: require_(isAdmin, "Admin"),
     requireSupport: require_(isSupport, "Support"),
