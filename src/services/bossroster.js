@@ -16,14 +16,20 @@ function bossName(title) {
     return RENAME[n.toLowerCase()] || n;
 }
 
+// Raids are fought as their final boss; the drop is still kills of the raid.
+const RAID_BOSS = {
+    "Chambers of Xeric": { name: "Olm", wiki: "Great Olm" },
+    "Theatre of Blood": { name: "Verzik Vitur", wiki: "Verzik Vitur" },
+    "Tombs of Amascut": { name: "Tumeken's Warden", wiki: "Tumeken's Warden" }
+};
 const wikiImg = name => `https://oldschool.runescape.wiki/images/${encodeURIComponent(name.replace(/ /g, "_"))}.png`;
 
 /** Pure: catalog tabs -> boss list. tabs = { pvm: [entries], raids: [entries] } */
 function buildRoster(tabs) {
     const map = new Map();
-    const add = (name, priceCents, tier, kc) => {
+    const add = (name, priceCents, tier, kc, fight = null) => {
         const cur = map.get(name);
-        if (!cur) map.set(name, { name, priceCents, tier, kc });
+        if (!cur) map.set(name, { name, priceCents, tier, kc, fightName: fight?.name || null, wiki: fight?.wiki || null });
         else if (priceCents > 0 && (cur.priceCents <= 0 || priceCents < cur.priceCents)) cur.priceCents = priceCents;
     };
     const cents = o => Math.round((o.price || 0) * 100);
@@ -48,9 +54,9 @@ function buildRoster(tabs) {
         if (/challenge|entry|hmt|hard/i.test(e.name)) continue; // CM / HM have their own specialist boosters
         const opts = (e.data?.options || []).filter(o => o.price > 0);
         const c = opts.length ? Math.min(...opts.map(cents)) : 0;
-        if (/chambers/i.test(e.name)) add("Chambers of Xeric", c, "rare", 5);
-        else if (/theatre/i.test(e.name)) add("Theatre of Blood", c, "ultra", 3);
-        else if (/tombs/i.test(e.name)) add("Tombs of Amascut", c, "ultra", 3);
+        if (/chambers/i.test(e.name)) add("Chambers of Xeric", c, "rare", 5, RAID_BOSS["Chambers of Xeric"]);
+        else if (/theatre/i.test(e.name)) add("Theatre of Blood", c, "ultra", 3, RAID_BOSS["Theatre of Blood"]);
+        else if (/tombs/i.test(e.name)) add("Tombs of Amascut", c, "ultra", 3, RAID_BOSS["Tombs of Amascut"]);
     }
     return [...map.values()].map(b => ({ ...b, img: wikiImg(b.name) }));
 }
@@ -86,17 +92,17 @@ async function syncRoster() {
     const raids = await catalog.getTab("Raids");
     const roster = buildRoster({ pvm, raids });
     if (!roster.length) return { added: 0, total: 0 };
-    const found = await resolveImages(roster.map(b => b.name));
-    for (const b of roster) if (found[b.name]) b.img = found[b.name];
+    const found = await resolveImages(roster.map(b => b.wiki || b.name));
+    for (const b of roster) { const f = found[b.wiki || b.name]; if (f) b.img = f; else if (b.wiki) b.img = wikiImg(b.wiki); }
     let added = 0;
     await withTx(async c => {
         for (const b of roster) {
             const r = await c.query(
-                `INSERT INTO boss_bosses (name, tier, kc, price_cents, img) VALUES ($1,$2,$3,$4,$5)
-                 ON CONFLICT (name) DO UPDATE SET tier=$2, kc=$3, price_cents=$4, in_sheet=TRUE,
+                `INSERT INTO boss_bosses (name, tier, kc, price_cents, img, fight_name) VALUES ($1,$2,$3,$4,$5,$6)
+                 ON CONFLICT (name) DO UPDATE SET tier=$2, kc=$3, price_cents=$4, in_sheet=TRUE, fight_name=$6,
                     img = CASE WHEN boss_bosses.img_custom IS NULL THEN $5 ELSE boss_bosses.img END
                  RETURNING (xmax = 0) AS inserted`,
-                [b.name, b.tier, b.kc, b.priceCents, b.img]);
+                [b.name, b.tier, b.kc, b.priceCents, b.img, b.fightName]);
             if (r.rows[0].inserted) added++;
         }
         await c.query("UPDATE boss_bosses SET in_sheet=FALSE WHERE NOT (name = ANY($1))", [roster.map(b => b.name)]);
@@ -106,7 +112,7 @@ async function syncRoster() {
 
 /** Effective view of a row (custom overrides win). */
 const effective = r => ({
-    id: r.id, name: r.name, price_cents: r.price_cents,
+    id: r.id, name: r.name, fight_name: r.fight_name, price_cents: r.price_cents,
     tier: r.tier_custom || r.tier,
     kc: r.kc_custom ?? r.kc,
     img: r.img_custom || r.img
