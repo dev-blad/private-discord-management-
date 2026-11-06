@@ -55,6 +55,30 @@ function buildRoster(tabs) {
     return [...map.values()].map(b => ({ ...b, img: wikiImg(b.name) }));
 }
 
+/** Ask the wiki for each page's main picture (guessing filenames misses a lot of bosses). Best effort. */
+async function resolveImages(names) {
+    const out = {};
+    for (let i = 0; i < names.length; i += 40) {
+        const chunk = names.slice(i, i + 40);
+        try {
+            const url = "https://oldschool.runescape.wiki/api.php?action=query&prop=pageimages&piprop=thumbnail&pithumbsize=500&redirects=1&format=json&titles="
+                + encodeURIComponent(chunk.join("|"));
+            const res = await fetch(url, { headers: { "User-Agent": "BladsBoostingBot/1.0 (Discord boss event)" } });
+            if (!res.ok) continue;
+            const q = (await res.json()).query || {};
+            const alias = {};
+            for (const n of q.normalized || []) alias[n.to] = n.from;
+            for (const r of q.redirects || []) alias[r.to] = alias[r.from] || r.from;
+            for (const page of Object.values(q.pages || {})) {
+                const from = alias[page.title] || page.title;
+                if (page.thumbnail?.source) out[from] = page.thumbnail.source;
+                if (page.thumbnail?.source) out[page.title] = page.thumbnail.source;
+            }
+        } catch (e) { console.error("[bossroster] wiki image lookup failed:", e.message); }
+    }
+    return out;
+}
+
 /** Re-read the PvM and Raids tabs and upsert the roster. Staff overrides are kept. */
 async function syncRoster() {
     const catalog = require("./catalog");
@@ -62,6 +86,8 @@ async function syncRoster() {
     const raids = await catalog.getTab("Raids");
     const roster = buildRoster({ pvm, raids });
     if (!roster.length) return { added: 0, total: 0 };
+    const found = await resolveImages(roster.map(b => b.name));
+    for (const b of roster) if (found[b.name]) b.img = found[b.name];
     let added = 0;
     await withTx(async c => {
         for (const b of roster) {
@@ -102,4 +128,4 @@ async function setBoss(name, { tier, kc, img, active }) {
     return effective((await query("SELECT * FROM boss_bosses WHERE id=$1", [id])).rows[0]);
 }
 
-module.exports = { bossName, buildRoster, syncRoster, activeBosses, setBoss, effective, COMMON_MAX_CENTS };
+module.exports = { resolveImages, bossName, buildRoster, syncRoster, activeBosses, setBoss, effective, COMMON_MAX_CENTS };
